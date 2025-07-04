@@ -255,6 +255,12 @@ defmodule Explorer.Chain.Import.Runner.Address.CurrentTokenBalances do
     repo.all(existing_ctb_query)
   end
 
+  defp select_existing_current_token_balances(repo, params, true) when length(params) > 1000 do
+    params
+    |> Enum.chunk_every(1000)
+    |> Enum.flat_map(&select_existing_current_token_balances(repo, &1, true))
+  end
+
   defp select_existing_current_token_balances(repo, params, true) do
     ids = Enum.map(params, &[&1.address_hash.bytes, &1.token_contract_address_hash.bytes, &1.token_id])
 

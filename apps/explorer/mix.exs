@@ -133,7 +133,8 @@ defmodule Explorer.Mixfile do
       {:utils, in_umbrella: true},
       {:dns, "~> 2.4.0"},
       {:inet_cidr, "~> 1.0.0"},
-      {:hammer, "~> 6.0"}
+      {:hammer, "~> 6.0"},
+      {:ecto_psql_extras, "~> 0.7"}
     ]
   end
 

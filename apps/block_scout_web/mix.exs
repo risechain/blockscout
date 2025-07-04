@@ -121,6 +121,7 @@ defmodule BlockScoutWeb.Mixfile do
       {:phoenix, "== 1.5.14"},
       {:phoenix_ecto, "~> 4.1"},
       {:phoenix_html, "== 3.3.4"},
+      {:phoenix_live_dashboard, "~> 0.6"},
       {:phoenix_live_reload, "~> 1.2", only: [:dev]},
       {:phoenix_live_view, "~> 0.17"},
       {:phoenix_pubsub, "~> 2.0"},

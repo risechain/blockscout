@@ -92,6 +92,11 @@ config :prometheus, BlockScoutWeb.Prometheus.PhoenixInstrumenter,
   # * remove `:vsn`
   channel_receive_labels: [:channel, :topic, :transport, :event]
 
+# Configures Phoenix LiveView
+# RISE TODO: do not expose secret like this
+config :block_scout_web, BlockScoutWeb.Endpoint,
+  live_view: [signing_salt: "SECRET_SALT"]
+
 config :spandex_phoenix, tracer: BlockScoutWeb.Tracer
 
 config :block_scout_web, BlockScoutWeb.Routers.ApiRouter,
