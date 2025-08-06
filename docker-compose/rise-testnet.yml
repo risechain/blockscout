@@ -1,0 +1,149 @@
+services:
+  # db-init:
+  #   extends:
+  #     file: ./services/db.yml
+  #     service: db-init
+
+  db:
+    depends_on: []
+    extends:
+      file: ./services/db.yml
+      service: db
+
+  backend:
+    depends_on:
+      - db
+    extends:
+      file: ./services/backend.yml
+      service: backend
+    build:
+      context: ..
+      dockerfile: ./docker/oldUI.Dockerfile
+      args:
+        RELEASE_VERSION: 8.1.1
+    pull_policy: build
+    environment:
+      ETHEREUM_JSONRPC_HTTP_URL: "https://indextest.testnet.riselabs.xyz"
+      ETHEREUM_JSONRPC_TRACE_URL: "https://indextest.testnet.riselabs.xyz"
+      JSON_RPC: "https://indextest.testnet.riselabs.xyz"
+      ECTO_USE_SSL: "false"
+      DATABASE_QUEUE_TARGET: "400"
+      POOL_SIZE: "200"
+      ETH_JSON_RPC_MAX_BATCH_SIZE: "5"
+      INDEXER_CATCHUP_BLOCKS_BATCH_SIZE: "10"
+      INDEXER_CATCHUP_BLOCKS_CONCURRENCY: "20"
+      INDEXER_RECEIPTS_BATCH_SIZE: "250"
+      ETHEREUM_JSONRPC_HTTP_TIMEOUT: "600"
+      ETHEREUM_JSONRPC_DEBUG_TRACE_TRANSACTION_TIMEOUT: "300s"
+      INDEXER_RECEIPTS_CONCURRENCY: "8"
+      ETHEREUM_JSONRPC_VARIANT: "geth"
+      CACHE_BLOCK_COUNT_PERIOD: "300"
+      CACHE_TXS_COUNT_PERIOD: "300"
+      CACHE_ADDRESS_SUM_PERIOD: "1800"
+      CACHE_TOTAL_GAS_USAGE_PERIOD: "1800"
+      INDEXER_PENDING_TRANSACTIONS_SANITIZER_INTERVAL: 30m
+      INDEXER_COIN_BALANCES_BATCH_SIZE: "100"
+      INDEXER_COIN_BALANCES_CONCURRENCY: "4"
+      INDEXER_TOKEN_BALANCES_BATCH_SIZE: "50"
+      INDEXER_TOKEN_BALANCES_CONCURRENCY: "8"
+      INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE : "20"
+      INDEXER_INTERNAL_TRANSACTIONS_CONCURRENCY: "10"
+      NFT_MEDIA_HANDLER_ENABLED: "false"
+      NFT_MEDIA_HANDLER_REMOTE_DISPATCHER_NODE_MODE_ENABLED: "false"
+      # SC verifier
+      MICROSERVICE_SC_VERIFIER_ENABLED: "true"
+      MICROSERVICE_SC_VERIFIER_TYPE: "sc_verifier"
+      MICROSERVICE_SC_VERIFIER_URL: "http://smart-contract-verifier:8050"
+      MICROSERVICE_SIG_PROVIDER_ENABLED: "true"
+      MICROSERVICE_SIG_PROVIDER_URL: "http://sig-provider:8050"
+    ports:
+      - "25723:4000"
+
+  frontend:
+    depends_on:
+      - backend
+    extends:
+      file: ./services/frontend.yml
+      service: frontend
+    environment:
+      NEXT_PUBLIC_API_HOST: "${BLOCKSCOUT_PUBLIC_HOST:-localhost}"
+      NEXT_PUBLIC_API_PROTOCOL: "http"
+      NEXT_PUBLIC_API_PORT: "25723"
+      NEXT_PUBLIC_APP_HOST: "${BLOCKSCOUT_PUBLIC_HOST:-localhost}"
+      NEXT_PUBLIC_APP_PROTOCOL: http
+      NEXT_PUBLIC_APP_PORT: "25743"
+      NEXT_PUBLIC_STATS_API_HOST: http://${BLOCKSCOUT_PUBLIC_HOST:-localhost}:25778
+      NEXT_PUBLIC_NETWORK_NAME: "RISE Testnet"
+      NEXT_PUBLIC_NETWORK_SHORT_NAME: "RISE"
+      NEXT_PUBLIC_AD_BANNER_PROVIDER: "none"
+      NEXT_PUBLIC_AD_TEXT_PROVIDER: "none"
+    ports:
+      - "25743:3000"
+
+  stats-db-init:
+    extends:
+      file: ./services/stats.yml
+      service: stats-db-init
+
+  stats-db:
+    depends_on:
+      stats-db-init:
+        condition: service_completed_successfully
+    extends:
+      file: ./services/stats.yml
+      service: stats-db
+
+  stats:
+    depends_on:
+      - stats-db
+      - backend
+    extends:
+      file: ./services/stats.yml
+      service: stats
+    ports:
+      - "25778:8050"
+    environment:
+      STATS__BLOCKSCOUT_API_URL: "http://backend:4000"
+      STATS__SERVER__HTTP__CORS__ALLOWED_ORIGIN: "http://${BLOCKSCOUT_PUBLIC_HOST:-localhost}:25743"
+      STATS__SERVER__HTTP__CORS__ENABLED: "true"
+
+  sig-provider:
+    extends:
+      file: ./services/sig-provider.yml
+      service: sig-provider
+    ports:
+      - 8083:8050
+
+  sc-verifier:
+    extends:
+      file: ./services/smart-contract-verifier.yml
+      service: smart-contract-verifier
+    ports:
+      - 8082:8050
+
+  grafana:
+    extends:
+      file: ./services/grafana.yml
+      service: grafana
+    ports:
+      - "25747:3000"
+    depends_on:
+      - backend
+      - stats
+
+  prometheus:
+    extends:
+      file: ./services/prometheus.yml
+      service: prometheus
+    ports:
+      - "25777:9090"
+    depends_on:
+      - backend
+
+volumes:
+  grafana_data:
+    external: false
+  grafana_config:
+    external: false
+  prometheus_data:
+    external: false
