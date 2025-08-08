@@ -135,7 +135,8 @@ defmodule Explorer.Mixfile do
       {:inet_cidr, "~> 1.0.0"},
       {:hammer, "~> 7.0"},
       {:ton, "~> 0.5.0"},
-      {:mint, "~> 1.0"}
+      {:mint, "~> 1.0"},
+      {:ecto_psql_extras, "~> 0.7"}
     ]
   end
 

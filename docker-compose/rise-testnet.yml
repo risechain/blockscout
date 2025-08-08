@@ -1,0 +1,111 @@
+services:
+  db-init:
+    extends:
+      file: ./services/db.yml
+      service: db-init
+
+  db:
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    extends:
+      file: ./services/db.yml
+      service: db
+
+  backend:
+    depends_on:
+      - db
+    extends:
+      file: ./services/backend.yml
+      service: backend
+    build:
+      context: ..
+      dockerfile: ./docker/oldUI.Dockerfile
+      args:
+        RELEASE_VERSION: 9.0.0
+    pull_policy: build
+    environment:
+      ETHEREUM_JSONRPC_HTTP_URL: "https://indexing.testnet.riselabs.xyz"
+      ETHEREUM_JSONRPC_TRACE_URL: "https://indexing.testnet.riselabs.xyz"
+      NFT_MEDIA_HANDLER_ENABLED: "false"
+      NFT_MEDIA_HANDLER_REMOTE_DISPATCHER_NODE_MODE_ENABLED: "false"
+      ETH_JSON_RPC_MAX_BATCH_SIZE: "5"
+      INDEXER_CATCHUP_BLOCKS_BATCH_SIZE: "20"
+      INDEXER_CATCHUP_BLOCKS_CONCURRENCY: "20"
+      INDEXER_RECEIPTS_BATCH_SIZE: "250"
+
+    ports:
+      - "25723:4000"
+
+  frontend:
+    depends_on:
+      - backend
+    extends:
+      file: ./services/frontend.yml
+      service: frontend
+    environment:
+      NEXT_PUBLIC_API_HOST: "${BLOCKSCOUT_PUBLIC_HOST:-localhost}"
+      NEXT_PUBLIC_API_PROTOCOL: "http"
+      NEXT_PUBLIC_API_PORT: "25723"
+      NEXT_PUBLIC_APP_HOST: "${BLOCKSCOUT_PUBLIC_HOST:-localhost}"
+      NEXT_PUBLIC_APP_PROTOCOL: http
+      NEXT_PUBLIC_APP_PORT: "25743"
+      NEXT_PUBLIC_STATS_API_HOST: http://${BLOCKSCOUT_PUBLIC_HOST:-localhost}:25778
+      NEXT_PUBLIC_NETWORK_NAME: "RISE Testnet"
+      NEXT_PUBLIC_NETWORK_SHORT_NAME: "RISE"
+    ports:
+      - "25743:3000"
+
+  stats-db-init:
+    extends:
+      file: ./services/stats.yml
+      service: stats-db-init
+
+  stats-db:
+    depends_on:
+      stats-db-init:
+        condition: service_completed_successfully
+    extends:
+      file: ./services/stats.yml
+      service: stats-db
+
+  stats:
+    depends_on:
+      - stats-db
+      - backend
+    extends:
+      file: ./services/stats.yml
+      service: stats
+    ports:
+      - "25778:8050"
+    environment:
+      STATS__BLOCKSCOUT_API_URL: "http://backend:4000"
+      STATS__SERVER__HTTP__CORS__ALLOWED_ORIGIN: "http://${BLOCKSCOUT_PUBLIC_HOST:-localhost}:25743"
+      STATS__SERVER__HTTP__CORS__ENABLED: "true"
+
+  grafana:
+    extends:
+      file: ./services/grafana.yml
+      service: grafana
+    ports:
+      - "25747:3000"
+    depends_on:
+      - backend
+      - stats
+
+  prometheus:
+    extends:
+      file: ./services/prometheus.yml
+      service: prometheus
+    ports:
+      - "25777:9090"
+    depends_on:
+      - backend
+
+volumes:
+  grafana_data:
+    external: false
+  grafana_config:
+    external: false
+  prometheus_data:
+    external: false
