@@ -181,11 +181,10 @@ defmodule BlockScoutWeb.Notifier do
   end
 
   def handle_event({:chain_event, :blocks, :realtime, blocks}) do
-    last_broadcasted_block_number = Helper.fetch_from_ets_cache(:last_broadcasted_block, :number)
-
     blocks
     |> Enum.sort_by(& &1.number, :asc)
     |> Enum.each(fn block ->
+      last_broadcasted_block_number = Helper.fetch_from_ets_cache(:last_broadcasted_block, :number)
       broadcast_latest_block?(block, last_broadcasted_block_number)
     end)
   end
@@ -634,7 +633,6 @@ defmodule BlockScoutWeb.Notifier do
     preloaded_block =
       Repo.preload(block, [
         [miner: [:names, :smart_contract, proxy_implementations_association()]],
-        :transactions,
         :rewards
       ])
 

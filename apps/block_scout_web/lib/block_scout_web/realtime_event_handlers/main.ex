@@ -36,6 +36,7 @@ defmodule BlockScoutWeb.RealtimeEventHandlers.Main do
     Subscriber.to(:address_coin_balances, :realtime)
     Subscriber.to(:addresses, :realtime)
     Subscriber.to(:block_rewards, :realtime)
+    Subscriber.to(:transactions, :realtime)
     Subscriber.to(:internal_transactions, :realtime)
     Subscriber.to(:internal_transactions, :on_demand)
     Subscriber.to(:addresses, :on_demand)
