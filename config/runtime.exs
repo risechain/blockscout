@@ -1009,7 +1009,11 @@ config :indexer,
     ConfigHelper.parse_integer_env_var("INDEXER_COIN_BALANCES_FETCHER_INIT_QUERY_LIMIT", 2_000),
   graceful_shutdown_period: ConfigHelper.parse_time_env_var("INDEXER_GRACEFUL_SHUTDOWN_PERIOD", "5m"),
   internal_transactions_fetch_order:
-    ConfigHelper.parse_catalog_value("INDEXER_INTERNAL_TRANSACTIONS_FETCH_ORDER", ["asc", "desc"], true, "asc")
+    ConfigHelper.parse_catalog_value("INDEXER_INTERNAL_TRANSACTIONS_FETCH_ORDER", ["asc", "desc"], true, "asc"),
+  internal_transactions_min_block_number:
+    ConfigHelper.parse_integer_env_var("INDEXER_INTERNAL_TRANSACTIONS_MIN_BLOCK", 0),
+  token_balances_min_block_number:
+    ConfigHelper.parse_integer_env_var("INDEXER_TOKEN_BALANCES_MIN_BLOCK", 0)
 
 config :indexer, :ipfs,
   gateway_url: ConfigHelper.parse_url_env_var("IPFS_GATEWAY_URL", "https://ipfs.io/ipfs"),

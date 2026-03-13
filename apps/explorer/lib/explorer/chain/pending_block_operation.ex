@@ -83,11 +83,13 @@ defmodule Explorer.Chain.PendingBlockOperation do
   def stream_blocks_with_unfetched_internal_transactions(initial, reducer, limited? \\ false)
       when is_function(reducer, 2) do
     direction = Application.get_env(:indexer, :internal_transactions_fetch_order)
+    min_block = Application.get_env(:indexer, :internal_transactions_min_block_number) || 0
 
     query =
       from(
         po in __MODULE__,
         where: not is_nil(po.block_number),
+        where: po.block_number >= ^min_block,
         select: po.block_number,
         order_by: [{^direction, po.block_number}]
       )

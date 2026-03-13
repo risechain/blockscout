@@ -159,7 +159,10 @@ defmodule Explorer.Chain.Address.TokenBalance do
         ) :: {:ok, accumulator}
         when accumulator: term()
   def stream_unfetched_token_balances(initial, reducer, limited? \\ false) when is_function(reducer, 2) do
+    min_block = Application.get_env(:indexer, :token_balances_min_block_number) || 0
+
     __MODULE__.unfetched_token_balances()
+    |> where([tb], tb.block_number >= ^min_block)
     |> add_token_balances_fetcher_limit(limited?)
     |> Repo.stream_reduce(initial, reducer)
   end
