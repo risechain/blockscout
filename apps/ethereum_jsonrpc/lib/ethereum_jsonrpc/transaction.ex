@@ -424,6 +424,50 @@ defmodule EthereumJSONRPC.Transaction do
     ])
   end
 
+  # RISE: workaround to handle the case: no nonce, maxPriorityFeePerGas, or maxFeePerGas
+  defp do_elixir_to_params(
+         %{
+           "blockHash" => block_hash,
+           "blockNumber" => block_number,
+           "from" => from_address_hash,
+           "gas" => gas,
+           "gasPrice" => gas_price,
+           "hash" => hash,
+           "input" => input,
+           "transactionIndex" => index,
+           "value" => value,
+           "type" => type
+         } = transaction
+       )
+       when not is_map_key(transaction, "nonce") and
+              not is_map_key(transaction, "maxPriorityFeePerGas") and
+              not is_map_key(transaction, "maxFeePerGas") do
+    result = %{
+      block_hash: block_hash,
+      block_number: block_number,
+      from_address_hash: from_address_hash,
+      gas: gas,
+      gas_price: gas_price,
+      hash: hash,
+      index: index,
+      input: input,
+      # nonce is NOT NULL in the DB, so default to 0.
+      nonce: 0,
+      to_address_hash: Map.get(transaction, "to"),
+      value: value,
+      transaction_index: index,
+      type: type
+    }
+
+    put_if_present(result, transaction, [
+      {"creates", :created_contract_address_hash},
+      {"block_timestamp", :block_timestamp},
+      {"r", :r},
+      {"s", :s},
+      {"v", :v, %{default: 0}}
+    ])
+  end
+
   # for legacy transactions without maxPriorityFeePerGas and maxFeePerGas
   defp do_elixir_to_params(
          %{
