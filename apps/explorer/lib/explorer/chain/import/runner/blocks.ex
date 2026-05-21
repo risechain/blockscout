@@ -616,36 +616,42 @@ defmodule Explorer.Chain.Import.Runner.Blocks do
       timeout: timeout
     )
 
-    # Query to find addresses created in lost consensus blocks
-    created_contract_addresses_query =
-      from(
-        t in Transaction,
-        join: s in subquery(acquire_query),
-        on: t.block_hash == s.hash,
-        # we don't want to remove contract code from blocks that will be upserted
-        where: t.block_hash not in ^consensus_hashes,
-        where: not is_nil(t.created_contract_address_hash),
-        select: t.created_contract_address_hash
+    # Only clean up contract data if blocks actually lost consensus (i.e. a reorg occurred).
+    # Skipping these queries when removed_consensus_blocks is empty avoids acquiring
+    # unnecessary locks on smart_contracts, addresses, transactions, and blocks on every
+    # block import — which at high throughput causes severe lock pressure.
+    if removed_consensus_blocks != [] do
+      # Query to find addresses created in lost consensus blocks
+      created_contract_addresses_query =
+        from(
+          t in Transaction,
+          join: s in subquery(acquire_query),
+          on: t.block_hash == s.hash,
+          # we don't want to remove contract code from blocks that will be upserted
+          where: t.block_hash not in ^consensus_hashes,
+          where: not is_nil(t.created_contract_address_hash),
+          select: t.created_contract_address_hash
+        )
+
+      # Delete smart contracts for addresses created in lost consensus blocks
+      repo.delete_all(
+        from(
+          sc in SmartContract,
+          where: sc.address_hash in subquery(created_contract_addresses_query)
+        ),
+        timeout: timeout
       )
 
-    # Delete smart contracts for addresses created in lost consensus blocks
-    repo.delete_all(
-      from(
-        sc in SmartContract,
-        where: sc.address_hash in subquery(created_contract_addresses_query)
-      ),
-      timeout: timeout
-    )
-
-    # Clear contract code from addresses created in lost consensus blocks
-    repo.update_all(
-      from(
-        address in Address,
-        where: address.hash in subquery(created_contract_addresses_query)
-      ),
-      [set: [contract_code: nil, updated_at: updated_at]],
-      timeout: timeout
-    )
+      # Clear contract code from addresses created in lost consensus blocks
+      repo.update_all(
+        from(
+          address in Address,
+          where: address.hash in subquery(created_contract_addresses_query)
+        ),
+        [set: [contract_code: nil, updated_at: updated_at]],
+        timeout: timeout
+      )
+    end
 
     if Application.get_env(:explorer, :chain_type) == :zilliqa do
       repo.delete_all(

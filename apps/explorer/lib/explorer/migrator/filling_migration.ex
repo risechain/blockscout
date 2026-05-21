@@ -288,7 +288,11 @@ defmodule Explorer.Migrator.FillingMigration do
       end
 
       defp batch_size do
-        Application.get_env(:explorer, __MODULE__)[:batch_size] || @default_batch_size
+        size = Application.get_env(:explorer, __MODULE__)[:batch_size] || @default_batch_size
+        # parse_integer_env_var returns 0 on parse failure (e.g. empty/non-integer env var),
+        # and 0 is truthy in Elixir so the || fallback above won't catch it.
+        # Enum.chunk_every/2 requires count >= 1, so guard here for all migrators.
+        if size > 0, do: size, else: @default_batch_size
       end
 
       defp concurrency do
