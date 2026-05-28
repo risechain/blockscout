@@ -25,7 +25,7 @@ defmodule Indexer.Fetcher.InternalTransaction do
   alias Explorer.Chain.{Block, Hash, PendingBlockOperation, PendingTransactionOperation, Transaction}
   alias Explorer.Chain.Cache.{Accounts, Blocks}
   alias Explorer.Chain.Zilliqa.Helper, as: ZilliqaHelper
-  alias Indexer.{BufferedTask, Tracer}
+  alias Indexer.{BufferedTask, Prometheus, Tracer}
   alias Indexer.Fetcher.InternalTransaction.Supervisor, as: InternalTransactionSupervisor
   alias Indexer.Transform.{AddressCoinBalances, Addresses, AddressTokenBalances}
   alias Indexer.Transform.Celo.TransactionTokenTransfers, as: CeloTransactionTokenTransfers
@@ -358,6 +358,10 @@ defmodule Indexer.Fetcher.InternalTransaction do
 
     case imports do
       {:ok, imported} ->
+        Prometheus.Instrumenter.inc_internal_transactions_imported(
+          length(internal_transactions_params_marked)
+        )
+
         Accounts.drop(imported[:addresses])
         Blocks.drop_nonconsensus(imported[:remove_consensus_of_missing_transactions_blocks])
 

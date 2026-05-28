@@ -528,6 +528,22 @@ defmodule Indexer.Block.Fetcher do
       Prometheus.Instrumenter.set_block_import(import_time / no_blocks_to_import, callback_module)
     end
 
+    case result do
+      {:ok, _} ->
+        Prometheus.Instrumenter.inc_transactions_imported(
+          length(options_with_broadcast.transactions.params),
+          callback_module
+        )
+
+        Prometheus.Instrumenter.inc_logs_imported(
+          length(options_with_broadcast.logs.params),
+          callback_module
+        )
+
+      _ ->
+        :ok
+    end
+
     result
   end
 

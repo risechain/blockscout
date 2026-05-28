@@ -38,6 +38,23 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   @counter [name: :import_errors_count, help: "Number of database import errors"]
 
+  @counter [
+    name: :transactions_imported_count,
+    labels: [:fetcher],
+    help: "Number of transactions imported (use rate() for tx/sec)"
+  ]
+
+  @counter [
+    name: :internal_transactions_imported_count,
+    help: "Number of internal transactions imported (use rate() for itx/sec)"
+  ]
+
+  @counter [
+    name: :logs_imported_count,
+    labels: [:fetcher],
+    help: "Number of logs imported (use rate() for logs/sec)"
+  ]
+
   @gauge [name: :memory_consumed, labels: [:fetcher], help: "Amount of memory consumed by fetchers (MB)"]
 
   @gauge [name: :latest_block_number, help: "Latest block number"]
@@ -114,6 +131,36 @@ defmodule Indexer.Prometheus.Instrumenter do
   @spec set_import_errors_count(error_count :: integer()) :: :ok
   def set_import_errors_count(error_count \\ 1) do
     Counter.inc([name: :import_errors_count], error_count)
+  end
+
+  @doc """
+  Increments the counter of imported transactions by `count`.
+  """
+  @spec inc_transactions_imported(count :: non_neg_integer(), fetcher :: atom()) :: :ok
+  def inc_transactions_imported(0, _fetcher), do: :ok
+
+  def inc_transactions_imported(count, fetcher) do
+    Counter.inc([name: :transactions_imported_count, labels: [fetcher]], count)
+  end
+
+  @doc """
+  Increments the counter of imported internal transactions by `count`.
+  """
+  @spec inc_internal_transactions_imported(count :: non_neg_integer()) :: :ok
+  def inc_internal_transactions_imported(0), do: :ok
+
+  def inc_internal_transactions_imported(count) do
+    Counter.inc([name: :internal_transactions_imported_count], count)
+  end
+
+  @doc """
+  Increments the counter of imported logs by `count`.
+  """
+  @spec inc_logs_imported(count :: non_neg_integer(), fetcher :: atom()) :: :ok
+  def inc_logs_imported(0, _fetcher), do: :ok
+
+  def inc_logs_imported(count, fetcher) do
+    Counter.inc([name: :logs_imported_count, labels: [fetcher]], count)
   end
 
   @doc """
