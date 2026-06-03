@@ -50,6 +50,7 @@ defmodule BlockScoutWeb.Notifier do
   alias Phoenix.View
   alias Timex.Duration
 
+  import Ecto.Query, only: [from: 2]
   import Explorer.Chain.SmartContract.Proxy.Models.Implementation, only: [proxy_implementations_association: 0]
 
   @check_broadcast_sequence_period 500
@@ -630,11 +631,19 @@ defmodule BlockScoutWeb.Notifier do
   end
 
   defp broadcast_block(block) do
+    # Only the count is needed by the live "Latest blocks" UI; skip preloading
+    # transaction rows and short-circuit Block.aggregate_transactions/1 by setting
+    # transactions_count directly with a single indexed COUNT.
+    transactions_count =
+      Repo.aggregate(from(t in Transaction, where: t.block_hash == ^block.hash), :count)
+
     preloaded_block =
-      Repo.preload(block, [
+      block
+      |> Repo.preload([
         [miner: [:names, :smart_contract, proxy_implementations_association()]],
         :rewards
       ])
+      |> Map.put(:transactions_count, transactions_count)
 
     average_block_time = AverageBlockTime.average_block_time()
 
