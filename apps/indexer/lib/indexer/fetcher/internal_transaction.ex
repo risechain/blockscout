@@ -123,7 +123,12 @@ defmodule Indexer.Fetcher.InternalTransaction do
     data_type = queue_data_type(json_rpc_named_arguments)
     filtered_data = filter_block_numbers(block_numbers_or_transactions, data_type, json_rpc_named_arguments)
 
-    case fetch_internal_transactions(filtered_data, json_rpc_named_arguments, data_type) do
+    {fetch_time, fetch_result} =
+      :timer.tc(fn -> fetch_internal_transactions(filtered_data, json_rpc_named_arguments, data_type) end)
+
+    Prometheus.Instrumenter.set_internal_transactions_fetch(fetch_time, data_type)
+
+    case fetch_result do
       {:ok, internal_transactions_params} ->
         safe_import_internal_transaction(internal_transactions_params, filtered_data, data_type)
 
@@ -348,15 +353,19 @@ defmodule Indexer.Fetcher.InternalTransaction do
         %{token_transfers: [], tokens: []}
       end
 
-    imports =
-      Chain.import(%{
-        token_transfers: %{params: celo_token_transfers},
-        tokens: %{params: celo_tokens},
-        addresses: %{params: addresses_params},
-        address_coin_balances: %{params: address_coin_balances_params_set},
-        internal_transactions: %{params: internal_transactions_and_empty_block_numbers, with: :blockless_changeset},
-        timeout: :infinity
-      })
+    {import_time, imports} =
+      :timer.tc(fn ->
+        Chain.import(%{
+          token_transfers: %{params: celo_token_transfers},
+          tokens: %{params: celo_tokens},
+          addresses: %{params: addresses_params},
+          address_coin_balances: %{params: address_coin_balances_params_set},
+          internal_transactions: %{params: internal_transactions_and_empty_block_numbers, with: :blockless_changeset},
+          timeout: :infinity
+        })
+      end)
+
+    Prometheus.Instrumenter.set_internal_transactions_import(import_time, data_type)
 
     case imports do
       {:ok, imported} ->

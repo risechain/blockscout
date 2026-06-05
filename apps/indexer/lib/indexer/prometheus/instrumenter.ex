@@ -34,6 +34,25 @@ defmodule Indexer.Prometheus.Instrumenter do
     help: "Block fetch batch request processing time"
   ]
 
+  # Wider buckets than the block-fetcher histograms because trace_block / debug_trace
+  # routinely take 100ms-seconds rather than tens of ms. data_type lets you see whether
+  # block-level vs per-transaction tracing has different latency profiles on this node.
+  @histogram [
+    name: :internal_transactions_fetch_duration_microseconds,
+    labels: [:data_type],
+    buckets: [10_000, 100_000, 1_000_000, 10_000_000],
+    duration_unit: :microseconds,
+    help: "Internal transactions JSON-RPC fetch time (one observation per BufferedTask batch, success or failure)"
+  ]
+
+  @histogram [
+    name: :internal_transactions_import_duration_microseconds,
+    labels: [:data_type],
+    buckets: [10_000, 100_000, 1_000_000, 10_000_000],
+    duration_unit: :microseconds,
+    help: "Internal transactions Chain.import time (one observation per batch, success or failure)"
+  ]
+
   @gauge [name: :delay_from_last_node_block, help: "Delay from the last block on the node in seconds"]
 
   @counter [name: :import_errors_count, help: "Number of database import errors"]
@@ -140,6 +159,22 @@ defmodule Indexer.Prometheus.Instrumenter do
   @spec set_block_batch_fetch(time :: integer(), fetcher :: atom()) :: :ok
   def set_block_batch_fetch(time, fetcher) do
     Histogram.observe([name: :block_batch_fetch_request_duration_microseconds, labels: [fetcher]], time)
+  end
+
+  @doc """
+  Records the internal-tx JSON-RPC fetch time (in microseconds) for the given data_type.
+  """
+  @spec set_internal_transactions_fetch(time :: integer(), data_type :: atom()) :: :ok
+  def set_internal_transactions_fetch(time, data_type) do
+    Histogram.observe([name: :internal_transactions_fetch_duration_microseconds, labels: [data_type]], time)
+  end
+
+  @doc """
+  Records the internal-tx Chain.import time (in microseconds) for the given data_type.
+  """
+  @spec set_internal_transactions_import(time :: integer(), data_type :: atom()) :: :ok
+  def set_internal_transactions_import(time, data_type) do
+    Histogram.observe([name: :internal_transactions_import_duration_microseconds, labels: [data_type]], time)
   end
 
   @doc """
