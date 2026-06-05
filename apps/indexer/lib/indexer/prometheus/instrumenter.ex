@@ -69,12 +69,14 @@ defmodule Indexer.Prometheus.Instrumenter do
   # block_range_100k label is the block_number / 100_000 bucket, which keeps
   # cardinality bounded (~max_block / 100k) while still pointing at the failing
   # region of the chain. data_type distinguishes block-level vs per-transaction
-  # tracing — same label values used elsewhere in InternalTransaction fetcher.
+  # tracing. stage is :rpc_fetch (JSON-RPC call failed) or :db_import (chain
+  # write failed after a successful fetch) — both leave blocks stuck in
+  # pending_block_operations, so the heatmap sums across stages by default.
   @counter [
-    name: :internal_transactions_fetch_errors_count,
-    labels: [:block_range_100k, :data_type],
+    name: :internal_transactions_indexing_errors_count,
+    labels: [:block_range_100k, :data_type, :stage],
     help:
-      "Blocks affected by RPC errors while fetching internal transactions, bucketed by 100k-block range. " <>
+      "Blocks affected by internal-tx indexing errors, bucketed by 100k-block range and broken down by failure stage. " <>
         "Each failing batch increments by the count of unique blocks it contains, per their 100k bucket."
   ]
 
@@ -207,18 +209,22 @@ defmodule Indexer.Prometheus.Instrumenter do
   end
 
   @doc """
-  Increments the internal-tx RPC fetch-error counter by `count` for the given 100k-block bucket and data_type.
+  Increments the internal-tx indexing-error counter by `count` for the given 100k-block bucket, data_type, and stage.
   """
-  @spec inc_internal_transactions_fetch_errors(
+  @spec inc_internal_transactions_indexing_errors(
           count :: non_neg_integer(),
           block_range_100k :: integer(),
-          data_type :: atom()
+          data_type :: atom(),
+          stage :: atom()
         ) :: :ok
-  def inc_internal_transactions_fetch_errors(0, _block_range_100k, _data_type), do: :ok
+  def inc_internal_transactions_indexing_errors(0, _block_range_100k, _data_type, _stage), do: :ok
 
-  def inc_internal_transactions_fetch_errors(count, block_range_100k, data_type) do
+  def inc_internal_transactions_indexing_errors(count, block_range_100k, data_type, stage) do
     Counter.inc(
-      [name: :internal_transactions_fetch_errors_count, labels: [block_range_100k, data_type]],
+      [
+        name: :internal_transactions_indexing_errors_count,
+        labels: [block_range_100k, data_type, stage]
+      ],
       count
     )
   end
