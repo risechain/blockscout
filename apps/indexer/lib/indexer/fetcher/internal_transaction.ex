@@ -138,6 +138,7 @@ defmodule Indexer.Fetcher.InternalTransaction do
           error_count: Enum.count(filtered_data)
         )
 
+        record_fetch_error_metrics(filtered_data, data_type)
         handle_not_found_transaction(reason)
 
         # re-queue the de-duped entries
@@ -154,6 +155,7 @@ defmodule Indexer.Fetcher.InternalTransaction do
           error_count: Enum.count(filtered_data)
         )
 
+        record_fetch_error_metrics(filtered_data, data_type)
         handle_not_found_transaction(reason)
 
         # re-queue the de-duped entries
@@ -504,6 +506,15 @@ defmodule Indexer.Fetcher.InternalTransaction do
     transactions_params
     |> Enum.map(& &1.block_number)
     |> Enum.uniq()
+  end
+
+  defp record_fetch_error_metrics(filtered_data, data_type) do
+    filtered_data
+    |> data_to_block_numbers(data_type)
+    |> Enum.frequencies_by(&div(&1, 100_000))
+    |> Enum.each(fn {bucket, count} ->
+      Prometheus.Instrumenter.inc_internal_transactions_fetch_errors(count, bucket, data_type)
+    end)
   end
 
   def defaults do

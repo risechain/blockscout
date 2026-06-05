@@ -66,6 +66,18 @@ defmodule Indexer.Prometheus.Instrumenter do
     help: "Number of blocks whose internal transactions have been fully indexed (use rate() for blocks/sec)"
   ]
 
+  # block_range_100k label is the block_number / 100_000 bucket, which keeps
+  # cardinality bounded (~max_block / 100k) while still pointing at the failing
+  # region of the chain. data_type distinguishes block-level vs per-transaction
+  # tracing — same label values used elsewhere in InternalTransaction fetcher.
+  @counter [
+    name: :internal_transactions_fetch_errors_count,
+    labels: [:block_range_100k, :data_type],
+    help:
+      "Blocks affected by RPC errors while fetching internal transactions, bucketed by 100k-block range. " <>
+        "Each failing batch increments by the count of unique blocks it contains, per their 100k bucket."
+  ]
+
   @gauge [name: :memory_consumed, labels: [:fetcher], help: "Amount of memory consumed by fetchers (MB)"]
 
   @gauge [name: :latest_block_number, help: "Latest block number"]
@@ -192,6 +204,23 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   def inc_blocks_internal_transactions_indexed(count) do
     Counter.inc([name: :blocks_internal_transactions_indexed_count], count)
+  end
+
+  @doc """
+  Increments the internal-tx RPC fetch-error counter by `count` for the given 100k-block bucket and data_type.
+  """
+  @spec inc_internal_transactions_fetch_errors(
+          count :: non_neg_integer(),
+          block_range_100k :: integer(),
+          data_type :: atom()
+        ) :: :ok
+  def inc_internal_transactions_fetch_errors(0, _block_range_100k, _data_type), do: :ok
+
+  def inc_internal_transactions_fetch_errors(count, block_range_100k, data_type) do
+    Counter.inc(
+      [name: :internal_transactions_fetch_errors_count, labels: [block_range_100k, data_type]],
+      count
+    )
   end
 
   @doc """
