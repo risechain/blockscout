@@ -362,6 +362,10 @@ defmodule Indexer.Fetcher.InternalTransaction do
           length(internal_transactions_params_marked)
         )
 
+        Prometheus.Instrumenter.inc_blocks_internal_transactions_indexed(
+          length(data_to_block_numbers(transactions_params_or_unique_numbers, data_type))
+        )
+
         Accounts.drop(imported[:addresses])
         Blocks.drop_nonconsensus(imported[:remove_consensus_of_missing_transactions_blocks])
 

@@ -530,6 +530,8 @@ defmodule Indexer.Block.Fetcher do
 
     case result do
       {:ok, _} ->
+        Prometheus.Instrumenter.inc_blocks_imported(no_blocks_to_import, callback_module)
+
         Prometheus.Instrumenter.inc_transactions_imported(
           length(options_with_broadcast.transactions.params),
           callback_module

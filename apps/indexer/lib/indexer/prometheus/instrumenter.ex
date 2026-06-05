@@ -55,6 +55,17 @@ defmodule Indexer.Prometheus.Instrumenter do
     help: "Number of logs imported (use rate() for logs/sec)"
   ]
 
+  @counter [
+    name: :blocks_imported_count,
+    labels: [:fetcher],
+    help: "Number of blocks fully imported with their transactions/logs (use rate() for blocks/sec)"
+  ]
+
+  @counter [
+    name: :blocks_internal_transactions_indexed_count,
+    help: "Number of blocks whose internal transactions have been fully indexed (use rate() for blocks/sec)"
+  ]
+
   @gauge [name: :memory_consumed, labels: [:fetcher], help: "Amount of memory consumed by fetchers (MB)"]
 
   @gauge [name: :latest_block_number, help: "Latest block number"]
@@ -161,6 +172,26 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   def inc_logs_imported(count, fetcher) do
     Counter.inc([name: :logs_imported_count, labels: [fetcher]], count)
+  end
+
+  @doc """
+  Increments the counter of fully-imported blocks by `count`.
+  """
+  @spec inc_blocks_imported(count :: non_neg_integer(), fetcher :: atom()) :: :ok
+  def inc_blocks_imported(0, _fetcher), do: :ok
+
+  def inc_blocks_imported(count, fetcher) do
+    Counter.inc([name: :blocks_imported_count, labels: [fetcher]], count)
+  end
+
+  @doc """
+  Increments the counter of blocks whose internal transactions have been fully indexed by `count`.
+  """
+  @spec inc_blocks_internal_transactions_indexed(count :: non_neg_integer()) :: :ok
+  def inc_blocks_internal_transactions_indexed(0), do: :ok
+
+  def inc_blocks_internal_transactions_indexed(count) do
+    Counter.inc([name: :blocks_internal_transactions_indexed_count], count)
   end
 
   @doc """
