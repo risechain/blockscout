@@ -95,15 +95,62 @@ defmodule EthereumJSONRPC.Geth do
 
   @doc """
   Fetches the `t:Explorer.Chain.InternalTransaction.changeset/2` params from the Geth trace URL.
+
+  Single-phase wrapper kept for backward compatibility — equivalent to
+  `fetch_block_internal_transactions_raw/2` followed by
+  `decode_block_internal_transactions/3`. New callers that want to gate the
+  decode step under a memory semaphore should use the two-phase pair directly.
   """
   @impl EthereumJSONRPC.Variant
   def fetch_block_internal_transactions(block_numbers, json_rpc_named_arguments) do
+    with {:ok, raw_responses, id_to_params} <-
+           fetch_block_internal_transactions_raw(block_numbers, json_rpc_named_arguments) do
+      decode_block_internal_transactions(raw_responses, id_to_params, json_rpc_named_arguments)
+    end
+  end
+
+  @doc """
+  Phase 1 of the two-phase `debug_traceBlockByNumber` pipeline: send the batch
+  over HTTP and return the raw, still-gzipped response bodies plus the
+  `id_to_params` map used to correlate responses to block numbers in phase 2.
+
+  Memory footprint of this stage is bounded by the compressed payload size
+  (~MBs per block, not GBs). Safe to run with high concurrency.
+  """
+  @spec fetch_block_internal_transactions_raw([non_neg_integer()], EthereumJSONRPC.json_rpc_named_arguments()) ::
+          {:ok,
+           [%{body: binary(), headers: list(), status_code: pos_integer()}],
+           %{non_neg_integer() => non_neg_integer()}}
+          | {:error, term()}
+  def fetch_block_internal_transactions_raw(block_numbers, json_rpc_named_arguments) do
     id_to_params = id_to_params(block_numbers)
 
-    with {:ok, blocks_responses} <-
-           id_to_params
-           |> debug_trace_block_by_number_requests()
-           |> json_rpc(json_rpc_named_arguments),
+    case id_to_params
+         |> debug_trace_block_by_number_requests()
+         |> EthereumJSONRPC.json_rpc_raw(json_rpc_named_arguments) do
+      {:ok, raw_responses} when is_list(raw_responses) ->
+        {:ok, raw_responses, id_to_params}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Phase 2 of the two-phase pipeline: gunzip + `Jason.decode` + standardize the
+  raw response bodies, then transform into internal-transaction params.
+
+  This is the memory-heavy stage — multi-GB Elixir term trees materialize
+  here. Callers should serialize/throttle this step (the indexer uses
+  `Indexer.Fetcher.InternalTransaction.HeavyStageGate` for that).
+  """
+  @spec decode_block_internal_transactions(
+          [%{body: binary(), headers: list(), status_code: pos_integer()}],
+          %{non_neg_integer() => non_neg_integer()},
+          EthereumJSONRPC.json_rpc_named_arguments()
+        ) :: {:ok, [map()]} | {:error, term()}
+  def decode_block_internal_transactions(raw_responses, id_to_params, json_rpc_named_arguments) do
+    with {:ok, blocks_responses} <- decode_raw_batch_responses(raw_responses),
          :ok <- check_errors_exist(blocks_responses, id_to_params) do
       transactions_params = to_transactions_params(blocks_responses, id_to_params)
 
@@ -117,6 +164,39 @@ defmodule EthereumJSONRPC.Geth do
         transactions_id_to_params,
         json_rpc_named_arguments
       )
+    end
+  end
+
+  # Each raw response wraps the body of a single HTTP round-trip. Because
+  # `EthereumJSONRPC.json_rpc_raw/2` may have split a too-large batch into
+  # multiple chunks, we may see more than one raw body — each containing a
+  # JSON array of responses. Decompress, decode, flatten, then standardize.
+  defp decode_raw_batch_responses(raw_responses) when is_list(raw_responses) do
+    decoded =
+      raw_responses
+      |> Enum.reduce_while([], fn %{body: body, headers: headers}, acc ->
+        body
+        |> EthereumJSONRPC.HTTP.Helper.try_unzip(headers)
+        |> Jason.decode()
+        |> case do
+          {:ok, list} when is_list(list) -> {:cont, [list | acc]}
+          {:ok, single} when is_map(single) -> {:cont, [[single] | acc]}
+          {:error, _} = err -> {:halt, err}
+        end
+      end)
+
+    case decoded do
+      {:error, _} = err ->
+        err
+
+      nested when is_list(nested) ->
+        responses =
+          nested
+          |> Enum.reverse()
+          |> List.flatten()
+          |> Enum.map(&EthereumJSONRPC.HTTP.standardize_response/1)
+
+        {:ok, responses}
     end
   end
 

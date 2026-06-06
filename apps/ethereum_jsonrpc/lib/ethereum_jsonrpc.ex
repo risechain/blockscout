@@ -729,6 +729,33 @@ defmodule EthereumJSONRPC do
     end
   end
 
+  @doc """
+  Raw counterpart of `json_rpc/2` — defers `gunzip` + `Jason.decode` to the
+  caller so a memory-bound concurrency gate can throttle decode independently
+  of HTTP fetch. HTTP-only; goes through `RequestCoordinator` so throttle and
+  timeout backoff stay consistent. See `EthereumJSONRPC.HTTP.json_rpc_raw/2`.
+  """
+  @spec json_rpc_raw(Transport.batch_request(), json_rpc_named_arguments) ::
+          {:ok, [%{body: binary(), headers: list(), status_code: pos_integer()}]}
+          | {:error, reason :: term()}
+  def json_rpc_raw(request, named_arguments) when is_list(request) and is_list(named_arguments) do
+    transport = Keyword.fetch!(named_arguments, :transport)
+    transport_options = Keyword.fetch!(named_arguments, :transport_options)
+    throttle_timeout = Keyword.get(named_arguments, :throttle_timeout, @default_throttle_timeout)
+
+    url = maybe_replace_url(transport_options[:url], transport_options[:fallback_url], transport)
+    corrected_transport_options = Keyword.replace(transport_options, :url, url)
+
+    case RequestCoordinator.perform_raw(request, transport, corrected_transport_options, throttle_timeout) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, _} = error ->
+        maybe_inc_error_count(corrected_transport_options[:url], named_arguments, transport)
+        error
+    end
+  end
+
   defp do_balances_request(id_to_params, _chunk_size, _args) when id_to_params == %{}, do: {:ok, []}
 
   defp do_balances_request(id_to_params, chunk_size, json_rpc_named_arguments) do

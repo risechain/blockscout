@@ -72,21 +72,32 @@ defmodule EthereumJSONRPC.RequestCoordinator do
           {:ok, Transport.result()} | {:error, term()}
   @spec perform(Transport.batch_request(), Transport.t(), Transport.options(), non_neg_integer()) ::
           {:ok, Transport.batch_response()} | {:error, term()}
-  def perform(request, transport, transport_options, throttle_timeout) do
-    request_method = request_method(request)
+  def perform(request, transport, transport_options, throttle_timeout),
+    do: do_perform(request, transport, transport_options, throttle_timeout, :json_rpc)
 
+  @doc """
+  Raw counterpart of `perform/4` — same throttle/backoff/timeout policy, but
+  dispatches to `transport.json_rpc_raw/2` so the response body is returned
+  undecoded and not gunzipped. Throttle counter and timeout rolling-window are
+  shared with `perform/4`.
+  """
+  @spec perform_raw(Transport.batch_request(), Transport.t(), Transport.options(), non_neg_integer()) ::
+          {:ok, [%{body: binary(), headers: list(), status_code: pos_integer()}]} | {:error, term()}
+  def perform_raw(request, transport, transport_options, throttle_timeout),
+    do: do_perform(request, transport, transport_options, throttle_timeout, :json_rpc_raw)
+
+  defp do_perform(request, transport, transport_options, throttle_timeout, mode) do
+    request_method = request_method(request)
     sleep_time = sleep_time(request_method)
 
     if sleep_time <= throttle_timeout do
       :timer.sleep(sleep_time)
-      remaining_wait_time = throttle_timeout - sleep_time
 
-      case throttle_request(remaining_wait_time) do
+      case throttle_request(throttle_timeout - sleep_time) do
         :ok ->
           # credo:disable-for-next-line
           trace_request(request, fn ->
-            request
-            |> transport.json_rpc(transport_options)
+            apply(transport, mode, [request, transport_options])
             |> handle_transport_response(request_method)
           end)
 
@@ -95,7 +106,6 @@ defmodule EthereumJSONRPC.RequestCoordinator do
       end
     else
       :timer.sleep(throttle_timeout)
-
       {:error, :timeout}
     end
   end

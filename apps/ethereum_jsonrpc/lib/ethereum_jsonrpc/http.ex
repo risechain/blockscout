@@ -19,6 +19,16 @@ defmodule EthereumJSONRPC.HTTP do
               {:ok, %{body: body :: String.t(), status_code: status_code :: pos_integer()}}
               | {:error, reason :: term}
 
+  # Same shape as `json_rpc/4` but returns the raw response body without gzip
+  # decompression and without `Jason.decode`. Headers are surfaced so the
+  # caller can decompress lazily under a memory gate. Optional — only adapters
+  # used by the two-phase InternalTransaction debug_trace path need it.
+  @callback json_rpc_raw(url :: String.t(), json :: iodata(), headers :: [{String.t(), String.t()}], options :: term()) ::
+              {:ok, %{body: binary(), headers: list(), status_code: pos_integer()}}
+              | {:error, reason :: term}
+
+  @optional_callbacks json_rpc_raw: 4
+
   @impl Transport
 
   def json_rpc(%{method: method} = request, options) when is_map(request) do
@@ -45,6 +55,23 @@ defmodule EthereumJSONRPC.HTTP do
 
   def json_rpc(batch_request, options) when is_list(batch_request) do
     chunked_json_rpc([batch_request], options, [])
+  end
+
+  @doc """
+  Like `json_rpc/2` but returns raw, undecoded, possibly-gzipped HTTP response
+  bodies so the caller can defer `gunzip` + `Jason.decode` under a memory gate.
+
+  Batch input only — the two-phase debug_trace path always sends a list.
+  Returns `{:ok, [%{body, headers, status_code}, ...]}`, one entry per HTTP
+  round-trip (a 413/504 split produces more than one). Each body is a JSON
+  array the caller must decode and concatenate.
+  """
+  def json_rpc_raw([batch | _] = chunked_batch_request, options) when is_list(batch) do
+    chunked_json_rpc_raw(chunked_batch_request, options, [])
+  end
+
+  def json_rpc_raw(batch_request, options) when is_list(batch_request) do
+    chunked_json_rpc_raw([batch_request], options, [])
   end
 
   defp chunked_json_rpc([], _options, decoded_response_bodies) when is_list(decoded_response_bodies) do
@@ -123,6 +150,84 @@ defmodule EthereumJSONRPC.HTTP do
         {first_chunk, second_chunk} = Enum.split(batch, split_size)
         new_chunks = [first_chunk, second_chunk | tail]
         chunked_json_rpc(new_chunks, options, decoded_response_bodies)
+    end
+  end
+
+  # Raw counterpart of `chunked_json_rpc/3` — same chunking/retry logic for
+  # 413/504/timeout but accumulates raw `%{body, headers, status_code}` maps
+  # instead of decoded JSON responses. Each entry corresponds to one HTTP
+  # round-trip that actually succeeded.
+  defp chunked_json_rpc_raw([], _options, raw_response_bodies) when is_list(raw_response_bodies) do
+    {:ok, Enum.reverse(raw_response_bodies)}
+  end
+
+  defp chunked_json_rpc_raw([[] | tail], options, raw_response_bodies) do
+    chunked_json_rpc_raw(tail, options, raw_response_bodies)
+  end
+
+  defp chunked_json_rpc_raw([[%{method: method} | _] = batch | tail] = chunks, options, raw_response_bodies)
+       when is_list(tail) and is_list(raw_response_bodies) do
+    http = Keyword.fetch!(options, :http)
+    {url_type, url} = url(options, method)
+    http_options = Keyword.fetch!(options, :http_options)
+
+    json = encode_json(batch)
+
+    case http.json_rpc_raw(url, json, headers(), http_options) do
+      {:ok, %{status_code: status_code} = response} when status_code in [413, 504] ->
+        rechunk_json_rpc_raw(chunks, options, response, raw_response_bodies)
+
+      {:ok, %{status_code: 200} = raw} ->
+        chunked_json_rpc_raw(tail, options, [raw | raw_response_bodies])
+
+      # Surface non-200 HTTP statuses as the same error tags the decoded path
+      # produces, so `RequestCoordinator.handle_transport_response/2` increments
+      # the RollingWindow and backs off subsequent calls. Without this, e.g. a
+      # CloudFlare-fronted RPC returning 502 + HTML would be accumulated as a
+      # "successful" raw body and only fail later at `Jason.decode`, which is
+      # after the throttle window has closed.
+      {:ok, %{status_code: 502}} ->
+        increment_error_count(url, url_type, options)
+        {:error, {:bad_gateway, url}}
+
+      {:ok, %{status_code: _}} ->
+        increment_error_count(url, url_type, options)
+        {:error, {:bad_response, url}}
+
+      {:error, :timeout} ->
+        rechunk_json_rpc_raw(chunks, options, :timeout, raw_response_bodies)
+
+      {:error, _} = error ->
+        increment_error_count(url, url_type, options)
+        error
+    end
+  end
+
+  defp rechunk_json_rpc_raw([batch | tail], options, response, raw_response_bodies) do
+    case length(batch) do
+      1 ->
+        old_truncate = Application.get_env(:logger, :truncate)
+        Logger.configure(truncate: :infinity)
+
+        Logger.error(fn ->
+          [
+            "413/504 returned from single raw request batch. Cannot shrink batch further. ",
+            "The actual batched request was ",
+            "#{inspect(batch)}. ",
+            "The actual response status of the method was ",
+            "#{inspect(response)}."
+          ]
+        end)
+
+        Logger.configure(truncate: old_truncate)
+
+        {:error, response}
+
+      batch_size ->
+        split_size = div(batch_size, 2)
+        {first_chunk, second_chunk} = Enum.split(batch, split_size)
+        new_chunks = [first_chunk, second_chunk | tail]
+        chunked_json_rpc_raw(new_chunks, options, raw_response_bodies)
     end
   end
 

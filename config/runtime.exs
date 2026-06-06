@@ -1243,6 +1243,9 @@ config :indexer, Indexer.Fetcher.InternalTransaction,
   indexing_finished_threshold:
     ConfigHelper.parse_integer_env_var("API_INTERNAL_TRANSACTIONS_INDEXING_FINISHED_THRESHOLD", 1_000)
 
+config :indexer, Indexer.Fetcher.InternalTransaction.HeavyStageGate,
+  permits: ConfigHelper.parse_integer_env_var("INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS", 2)
+
 config :indexer, Indexer.Fetcher.InternalTransaction.DeleteQueue,
   batch_size: ConfigHelper.parse_integer_env_var("INDEXER_INTERNAL_TRANSACTIONS_DELETE_QUEUE_BATCH_SIZE", 100),
   concurrency: ConfigHelper.parse_integer_env_var("INDEXER_INTERNAL_TRANSACTIONS_DELETE_QUEUE_CONCURRENCY", 1),

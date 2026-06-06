@@ -26,6 +26,7 @@ defmodule Indexer.Fetcher.InternalTransaction do
   alias Explorer.Chain.Cache.{Accounts, Blocks}
   alias Explorer.Chain.Zilliqa.Helper, as: ZilliqaHelper
   alias Indexer.{BufferedTask, Prometheus, Tracer}
+  alias Indexer.Fetcher.InternalTransaction.HeavyStageGate
   alias Indexer.Fetcher.InternalTransaction.Supervisor, as: InternalTransactionSupervisor
   alias Indexer.Transform.{AddressCoinBalances, Addresses, AddressTokenBalances}
   alias Indexer.Transform.Celo.TransactionTokenTransfers, as: CeloTransactionTokenTransfers
@@ -123,53 +124,90 @@ defmodule Indexer.Fetcher.InternalTransaction do
     data_type = queue_data_type(json_rpc_named_arguments)
     filtered_data = filter_block_numbers(block_numbers_or_transactions, data_type, json_rpc_named_arguments)
 
+    if geth_two_phase?(data_type, json_rpc_named_arguments) do
+      run_two_phase_geth(filtered_data, json_rpc_named_arguments)
+    else
+      run_legacy(filtered_data, json_rpc_named_arguments, data_type)
+    end
+  end
+
+  # Geth `:block_number` path: split HTTP fetch from decode+import so memory-
+  # heavy work is throttled by `HeavyStageGate` independently of RPC
+  # concurrency. Parked tasks only hold the compressed body — keep
+  # ETHEREUM_JSONRPC_HTTP_GZIP_ENABLED=true.
+  defp run_two_phase_geth(filtered_data, json_rpc_named_arguments) do
+    block_numbers = check_and_filter_block_numbers(filtered_data)
+    Logger.metadata(count: Enum.count(block_numbers))
+
+    {raw_fetch_time, raw_result} =
+      :timer.tc(fn ->
+        EthereumJSONRPC.Geth.fetch_block_internal_transactions_raw(block_numbers, json_rpc_named_arguments)
+      end)
+
+    Prometheus.Instrumenter.set_internal_transactions_raw_fetch(raw_fetch_time, :block_number)
+
+    case raw_result do
+      {:ok, raw_responses, id_to_params} ->
+        Enum.each(raw_responses, fn %{body: body} ->
+          Prometheus.Instrumenter.observe_internal_transactions_raw_body_bytes(byte_size(body))
+        end)
+
+        HeavyStageGate.with_permit(fn ->
+          {decode_time, decode_result} =
+            :timer.tc(fn ->
+              EthereumJSONRPC.Geth.decode_block_internal_transactions(
+                raw_responses,
+                id_to_params,
+                json_rpc_named_arguments
+              )
+            end)
+
+          Prometheus.Instrumenter.set_internal_transactions_decode(decode_time, :block_number)
+          handle_fetch_result(decode_result, filtered_data, :block_number)
+        end)
+
+      {:error, _} = err ->
+        handle_fetch_result(err, filtered_data, :block_number)
+    end
+  end
+
+  # Original single-phase path for non-Geth variants and `:transaction_params`.
+  # Untouched by the gate — those variants' trace_block / trace_replay
+  # responses don't have the multi-GB problem.
+  defp run_legacy(filtered_data, json_rpc_named_arguments, data_type) do
     {fetch_time, fetch_result} =
       :timer.tc(fn -> fetch_internal_transactions(filtered_data, json_rpc_named_arguments, data_type) end)
 
     Prometheus.Instrumenter.set_internal_transactions_fetch(fetch_time, data_type)
-
-    case fetch_result do
-      {:ok, internal_transactions_params} ->
-        safe_import_internal_transaction(internal_transactions_params, filtered_data, data_type)
-
-      {:error, reason} ->
-        Logger.error(
-          fn ->
-            [
-              "failed to fetch internal transactions for #{data_type} #{inspect(filtered_data)}: ",
-              Exception.format(:error, reason)
-            ]
-          end,
-          error_count: Enum.count(filtered_data)
-        )
-
-        record_indexing_error_metrics(filtered_data, data_type, :rpc_fetch)
-        handle_not_found_transaction(reason)
-
-        # re-queue the de-duped entries
-        {:retry, filtered_data}
-
-      {:error, reason, stacktrace} ->
-        Logger.error(
-          fn ->
-            [
-              "failed to fetch internal transactions for #{data_type} #{inspect(filtered_data)}: ",
-              Exception.format(:error, reason, stacktrace)
-            ]
-          end,
-          error_count: Enum.count(filtered_data)
-        )
-
-        record_indexing_error_metrics(filtered_data, data_type, :rpc_fetch)
-        handle_not_found_transaction(reason)
-
-        # re-queue the de-duped entries
-        {:retry, filtered_data}
-
-      :ignore ->
-        :ok
-    end
+    handle_fetch_result(fetch_result, filtered_data, data_type)
   end
+
+  defp handle_fetch_result({:ok, internal_transactions_params}, filtered_data, data_type),
+    do: safe_import_internal_transaction(internal_transactions_params, filtered_data, data_type)
+
+  defp handle_fetch_result(:ignore, _filtered_data, _data_type), do: :ok
+
+  defp handle_fetch_result({:error, reason}, filtered_data, data_type),
+    do: log_and_retry(reason, Exception.format(:error, reason), filtered_data, data_type)
+
+  defp handle_fetch_result({:error, reason, stacktrace}, filtered_data, data_type),
+    do: log_and_retry(reason, Exception.format(:error, reason, stacktrace), filtered_data, data_type)
+
+  defp log_and_retry(reason, formatted, filtered_data, data_type) do
+    Logger.error(
+      fn -> ["failed to fetch internal transactions for #{data_type} #{inspect(filtered_data)}: ", formatted] end,
+      error_count: Enum.count(filtered_data)
+    )
+
+    record_indexing_error_metrics(filtered_data, data_type, :rpc_fetch)
+    handle_not_found_transaction(reason)
+    {:retry, filtered_data}
+  end
+
+  defp geth_two_phase?(:block_number, json_rpc_named_arguments),
+    do: Keyword.fetch!(json_rpc_named_arguments, :variant) == EthereumJSONRPC.Geth
+
+  defp geth_two_phase?(_data_type, _json_rpc_named_arguments), do: false
 
   defp fetch_internal_transactions(block_numbers_or_transactions, json_rpc_named_arguments, data_type) do
     Logger.metadata(count: Enum.count(block_numbers_or_transactions))

@@ -25,6 +25,7 @@ defmodule Indexer.Supervisor do
   alias Indexer.Fetcher.CoinBalance.Catchup, as: CoinBalanceCatchup
   alias Indexer.Fetcher.CoinBalance.Realtime, as: CoinBalanceRealtime
   alias Indexer.Fetcher.InternalTransaction.DeleteQueue, as: InternalTransactionDeleteQueue
+  alias Indexer.Fetcher.InternalTransaction.HeavyStageGate, as: InternalTransactionHeavyStageGate
   alias Indexer.Fetcher.MultichainSearchDb.BalancesExportQueue, as: MultichainSearchDbBalancesExportQueue
   alias Indexer.Fetcher.MultichainSearchDb.CountersExportQueue, as: MultichainSearchDbCountersExportQueue
   alias Indexer.Fetcher.MultichainSearchDb.CountersFetcher, as: MultichainSearchDbCountersFetcher
@@ -140,6 +141,10 @@ defmodule Indexer.Supervisor do
 
         # Async catchup fetchers
         {UncleBlock.Supervisor, [[block_fetcher: block_fetcher, memory_monitor: memory_monitor]]},
+        # Gate must start before the InternalTransaction fetcher — every run/2
+        # task acquires a permit from it, so a missing gate would crash the
+        # fetcher's first call.
+        InternalTransactionHeavyStageGate,
         {InternalTransaction.Supervisor,
          [[json_rpc_named_arguments: json_rpc_named_arguments, memory_monitor: memory_monitor]]},
         {CoinBalanceCatchup.Supervisor,

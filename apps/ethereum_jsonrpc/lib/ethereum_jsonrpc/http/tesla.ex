@@ -33,4 +33,29 @@ defmodule EthereumJSONRPC.HTTP.Tesla do
   end
 
   def json_rpc(url, _json, _headers, _options) when is_nil(url), do: {:error, "URL is nil"}
+
+  @impl HTTP
+  def json_rpc_raw(url, json, headers, options) when is_binary(url) and is_list(options) do
+    method = Helper.get_method_from_json_string(json)
+
+    Instrumenter.json_rpc_requests(method)
+
+    case Tesla.post(TeslaHelper.client(options), url, json, headers: headers, opts: TeslaHelper.request_opts(options)) do
+      {:ok, %Tesla.Env{body: body, status: status_code, headers: response_headers}} ->
+        # Deliberately skip Jason.decode for error sniffing and skip
+        # Helper.try_unzip — both are deferred to the caller so they can run
+        # under a memory-bound concurrency gate. We still bump the error
+        # counter on HTTP status codes that signal upstream failure.
+        if status_code >= 400, do: Instrumenter.json_rpc_errors(method)
+
+        {:ok, %{body: body, headers: response_headers, status_code: status_code}}
+
+      {:error, error} ->
+        Instrumenter.json_rpc_errors(method)
+
+        {:error, error}
+    end
+  end
+
+  def json_rpc_raw(url, _json, _headers, _options) when is_nil(url), do: {:error, "URL is nil"}
 end
