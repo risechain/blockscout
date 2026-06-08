@@ -345,8 +345,8 @@
     {
       "id": 24,
       "type": "timeseries",
-      "title": "Internal-tx fetch (JSON-RPC) latency",
-      "description": "histogram_quantile of internal_transactions_fetch_duration_microseconds — JSON-RPC round-trip for trace_block / debug_trace per BufferedTask batch, success or failure. Climbing p95 here = trace node is the bottleneck.",
+      "title": "Legacy single-phase fetch latency",
+      "description": "histogram_quantile of internal_transactions_fetch_duration_microseconds — single-phase JSON-RPC round-trip for trace_block / debug_trace per BufferedTask batch. Only populated for non-Geth variants (Nethermind/Erigon/Besu/RSK/Filecoin) or :transaction_params mode. EMPTY when Geth two-phase debug_traceBlockByNumber is active — see the Phase 1 raw HTTP / Phase 2 decode panels below instead.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
@@ -472,21 +472,21 @@
     {
       "id": 41,
       "type": "heatmap",
-      "title": "Internal-tx indexing errors by block range (×100k)",
-      "description": "Heatmap of rate(internal_transactions_indexing_errors_count) summed across stages, by 100k-block bucket. Bright cells = blocks in that range currently failing internal-tx indexing (RPC or DB). Pair with the stage breakdown to identify root cause, and with `SELECT min/max(block_number) FROM pending_block_operations` to confirm the stuck range.",
+      "title": "Internal-tx indexing errors by block range (100k bucket)",
+      "description": "Heatmap of rate(internal_transactions_indexing_errors_count) summed across stages, by 100k-block bucket. Row label is reconstructed to the bucket's starting block number by appending 5 zeros to the block_range_100k bucket value (e.g. bucket 132 → label 13200000 = blocks 13,200,000–13,299,999). Bright cells = blocks in that range currently failing internal-tx indexing (RPC or DB). Pair with the stage breakdown to identify root cause, and with `SELECT min/max(block_number) FROM pending_block_operations` to confirm the stuck range.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 10, "w": 18, "x": 0, "y": 56 },
       "targets": [
         {
-          "expr": "sum by (block_range_100k) (rate(internal_transactions_indexing_errors_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum by (block_range_100k) (rate(internal_transactions_indexing_errors_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) > 0",
           "refId": "A",
           "format": "time_series",
-          "legendFormat": "{{block_range_100k}}"
+          "legendFormat": "{{block_range_100k}}00000"
         }
       ],
       "options": {
         "calculate": false,
-        "yAxis": { "axisPlacement": "left", "reverse": false, "unit": "short", "decimals": 0 },
+        "yAxis": { "axisPlacement": "left", "reverse": true, "axisLabel": "block range start" },
         "rowsFrame": { "layout": "auto", "value": "block_range_100k" },
         "color": { "mode": "scheme", "scheme": "Spectral", "exponent": 0.5, "min": 0, "steps": 64, "reverse": true },
         "cellGap": 1,
@@ -632,10 +632,10 @@
     {
       "id": 55,
       "type": "timeseries",
-      "title": "Raw response body size (p50/p95/p99, bytes)",
-      "description": "histogram_quantile of internal_transactions_raw_body_bytes — size of each debug_traceBlockByNumber HTTP body (compressed if ETHEREUM_JSONRPC_HTTP_GZIP_ENABLED=true, else uncompressed). Multiply p95 by the permit count for a rough peak-memory ceiling during decode. Spiking p99 = a small number of huge blocks; consider lowering INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE.",
+      "title": "Raw response body size — compressed (p50/p95/p99, bytes)",
+      "description": "histogram_quantile of internal_transactions_raw_body_bytes — size of each debug_traceBlockByNumber HTTP body (compressed if ETHEREUM_JSONRPC_HTTP_GZIP_ENABLED=true, else uncompressed). Bounds the memory held by parked tasks waiting on HeavyStageGate. Spiking p99 = a small number of huge blocks; consider lowering INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 83 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 83 },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
@@ -651,6 +651,33 @@
         },
         {
           "expr": "histogram_quantile(0.99, sum by (le) (rate(internal_transactions_raw_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "C",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "type": "timeseries",
+      "title": "Decompressed body size (p50/p95/p99, bytes)",
+      "description": "histogram_quantile of internal_transactions_decompressed_body_bytes — size of each debug_traceBlockByNumber response after gunzip, one observation per HTTP round-trip. Peak Elixir-term memory during decode ≈ p95 × HeavyStageGate permits. Divide by the compressed panel's p95 for the wire-compression ratio (typically 10–50× for trace payloads).",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 83 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
           "refId": "C",
           "legendFormat": "p99"
         }
