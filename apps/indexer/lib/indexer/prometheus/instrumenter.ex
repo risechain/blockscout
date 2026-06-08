@@ -45,12 +45,28 @@ defmodule Indexer.Prometheus.Instrumenter do
     help: "Internal transactions JSON-RPC fetch time (one observation per BufferedTask batch, success or failure)"
   ]
 
-  @histogram [
-    name: :internal_transactions_import_duration_microseconds,
+  # Chain.import time per internal-tx batch. Histograms were dropped here in
+  # favor of (sum counter + count counter + latest-value gauge) so we don't
+  # spend cardinality on bucket boundaries that get blown past by minutes-long
+  # outliers. Avg = rate(_sum)/rate(_count) — same query shape as the old
+  # histogram. The `_last_microseconds` gauge gives Grafana a value to chart
+  # max_over_time() against; note Prometheus only samples this gauge at scrape
+  # time, so outliers landing between scrapes are NOT guaranteed to be seen.
+  # For true tail visibility consider a "slow event" counter on top.
+  @counter [
+    name: :internal_transactions_import_duration_sum_microseconds,
     labels: [:data_type],
-    buckets: [10_000, 100_000, 1_000_000, 10_000_000],
-    duration_unit: :microseconds,
-    help: "Internal transactions Chain.import time (one observation per batch, success or failure)"
+    help: "Cumulative Chain.import time for internal-tx batches (µs). Pair with _count for avg."
+  ]
+  @counter [
+    name: :internal_transactions_import_duration_count,
+    labels: [:data_type],
+    help: "Number of Chain.import calls for internal-tx batches (success or failure)"
+  ]
+  @gauge [
+    name: :internal_transactions_import_duration_last_microseconds,
+    labels: [:data_type],
+    help: "Most recent Chain.import duration for an internal-tx batch (µs). Use max_over_time() for windowed max."
   ]
 
   # Phase-1 timing — HTTP round-trip only, no gunzip, no Jason.decode. Should be
@@ -86,6 +102,25 @@ defmodule Indexer.Prometheus.Instrumenter do
     buckets: [1_000, 100_000, 1_000_000, 10_000_000, 60_000_000],
     duration_unit: :microseconds,
     help: "Time spent waiting on the InternalTransaction heavy-stage permit"
+  ]
+
+  # Full duration of the work executed under one HeavyStageGate permit. The
+  # gate wraps decode + Chain.import + bookkeeping, so this is decode_duration
+  # PLUS everything downstream until the permit is released. The gap between
+  # this and decode_duration is the unmeasured work that the gate is actually
+  # serializing — usually Chain.import time. Shape: sum + count + last gauge
+  # (same trade-off as import_duration above).
+  @counter [
+    name: :internal_transactions_gate_hold_duration_sum_microseconds,
+    help: "Cumulative HeavyStageGate hold time across all permits (µs). Pair with _count for avg."
+  ]
+  @counter [
+    name: :internal_transactions_gate_hold_duration_count,
+    help: "Number of HeavyStageGate permit acquisitions that completed (success or failure)"
+  ]
+  @gauge [
+    name: :internal_transactions_gate_hold_duration_last_microseconds,
+    help: "Most recent HeavyStageGate permit hold duration (µs). Use max_over_time() for windowed max."
   ]
 
   # Current number of decode/import slots in use. Plateaus at the configured
@@ -250,10 +285,18 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   @doc """
   Records the internal-tx Chain.import time (in microseconds) for the given data_type.
+
+  Updates three series:
+    * sum counter — cumulative time, for avg via rate
+    * count counter — number of calls
+    * last gauge — most recent value, for windowed max via max_over_time()
   """
   @spec set_internal_transactions_import(time :: integer(), data_type :: atom()) :: :ok
   def set_internal_transactions_import(time, data_type) do
-    Histogram.observe([name: :internal_transactions_import_duration_microseconds, labels: [data_type]], time)
+    labels = [data_type]
+    Counter.inc([name: :internal_transactions_import_duration_sum_microseconds, labels: labels], time)
+    Counter.inc(name: :internal_transactions_import_duration_count, labels: labels)
+    Gauge.set([name: :internal_transactions_import_duration_last_microseconds, labels: labels], time)
   end
 
   @doc """
@@ -281,6 +324,18 @@ defmodule Indexer.Prometheus.Instrumenter do
   @spec set_internal_transactions_heavy_gate_wait(time :: integer()) :: :ok
   def set_internal_transactions_heavy_gate_wait(time) do
     Histogram.observe([name: :internal_transactions_heavy_gate_wait_duration_microseconds], time)
+  end
+
+  @doc """
+  Records the full duration that one HeavyStageGate permit was held (in
+  microseconds). Compared to `set_internal_transactions_decode/2`, the
+  difference is the work the gate is serializing beyond decode itself.
+  """
+  @spec set_internal_transactions_gate_hold(time :: integer()) :: :ok
+  def set_internal_transactions_gate_hold(time) do
+    Counter.inc([name: :internal_transactions_gate_hold_duration_sum_microseconds], time)
+    Counter.inc(name: :internal_transactions_gate_hold_duration_count)
+    Gauge.set([name: :internal_transactions_gate_hold_duration_last_microseconds], time)
   end
 
   @doc """

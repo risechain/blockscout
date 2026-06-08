@@ -31,10 +31,13 @@ defmodule Indexer.Fetcher.InternalTransaction.HeavyStageGate do
     {:ok, ref} = GenServer.call(__MODULE__, :acquire, :infinity)
     wait_us = System.convert_time_unit(System.monotonic_time() - wait_started_at, :native, :microsecond)
     Instrumenter.set_internal_transactions_heavy_gate_wait(wait_us)
+    hold_started_at = System.monotonic_time()
 
     try do
       fun.()
     after
+      hold_us = System.convert_time_unit(System.monotonic_time() - hold_started_at, :native, :microsecond)
+      Instrumenter.set_internal_transactions_gate_hold(hold_us)
       GenServer.cast(__MODULE__, {:release, ref})
     end
   end
