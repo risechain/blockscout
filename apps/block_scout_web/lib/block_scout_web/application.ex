@@ -61,11 +61,11 @@ defmodule BlockScoutWeb.Application do
     :ok
   end
 
-  alias Indexer.Prometheus.Metrics, as: IndexerMetrics
+  alias Indexer.Prometheus.{InternalTransactionQueueMetrics, Metrics}
 
   defp indexer_metric_worker do
     if Explorer.mode() in [:indexer, :all] do
-      [{IndexerMetrics, []}]
+      [{Metrics, []}, {InternalTransactionQueueMetrics, []}]
     else
       []
     end

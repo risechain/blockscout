@@ -272,127 +272,110 @@
     {
       "id": 21,
       "type": "timeseries",
-      "title": "Block full processing latency (p50/p95)",
+      "title": "Block full processing latency (avg / max-bucket)",
+      "description": "avg = rate(sum)/rate(count), the exact arithmetic mean (bucket-independent, throughput-relevant). max-bucket = histogram_quantile(1.0,...), the upper edge of the highest non-empty bucket — answers \"are observations landing in the slow bucket?\". Histograms don't store true sample min/max, so quantile-based panels were dropped; the legend's \"max\" column shows the per-series maximum of the avg over the time range.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le, fetcher) (rate(block_full_processing_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "p50 {{fetcher}}"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, fetcher) (rate(block_full_processing_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "B",
-          "legendFormat": "p95 {{fetcher}}"
-        },
-        {
           "expr": "sum by (fetcher) (rate(block_full_processing_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (fetcher) (rate(block_full_processing_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "C",
+          "refId": "A",
           "legendFormat": "avg {{fetcher}}"
+        },
+        {
+          "expr": "histogram_quantile(1.0, sum by (le, fetcher) (rate(block_full_processing_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "max-bucket {{fetcher}}"
         }
       ]
     },
     {
       "id": 22,
       "type": "timeseries",
-      "title": "Block import (DB write) latency",
+      "title": "Block import (DB write) latency (avg / max-bucket)",
+      "description": "Wall-clock duration of Chain.import — INCLUDES DB-pool checkout, BEGIN, all upserts (and any row-lock waits from concurrent writers), and COMMIT. No advisory locks in this path, so the metric already captures lock-wait time. Avg is the throughput-relevant figure; max-bucket flags when batches land in the slow bucket.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le, fetcher) (rate(block_import_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "p50 {{fetcher}}"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, fetcher) (rate(block_import_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "B",
-          "legendFormat": "p95 {{fetcher}}"
-        },
-        {
           "expr": "sum by (fetcher) (rate(block_import_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (fetcher) (rate(block_import_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "C",
+          "refId": "A",
           "legendFormat": "avg {{fetcher}}"
+        },
+        {
+          "expr": "histogram_quantile(1.0, sum by (le, fetcher) (rate(block_import_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "max-bucket {{fetcher}}"
         }
       ]
     },
     {
       "id": 23,
       "type": "timeseries",
-      "title": "Batch fetch (JSON-RPC) latency",
+      "title": "Batch fetch (JSON-RPC) latency (avg / max-bucket)",
+      "description": "JSON-RPC batch fetch round-trip from the block fetcher.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le, fetcher) (rate(block_batch_fetch_request_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "sum by (fetcher) (rate(block_batch_fetch_request_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (fetcher) (rate(block_batch_fetch_request_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "A",
-          "legendFormat": "p50 {{fetcher}}"
+          "legendFormat": "avg {{fetcher}}"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le, fetcher) (rate(block_batch_fetch_request_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(1.0, sum by (le, fetcher) (rate(block_batch_fetch_request_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
           "refId": "B",
-          "legendFormat": "p95 {{fetcher}}"
+          "legendFormat": "max-bucket {{fetcher}}"
         }
       ]
     },
     {
       "id": 24,
       "type": "timeseries",
-      "title": "Legacy single-phase fetch latency",
-      "description": "histogram_quantile of internal_transactions_fetch_duration_microseconds — single-phase JSON-RPC round-trip for trace_block / debug_trace per BufferedTask batch. Only populated for non-Geth variants (Nethermind/Erigon/Besu/RSK/Filecoin) or :transaction_params mode. EMPTY when Geth two-phase debug_traceBlockByNumber is active — see the Phase 1 raw HTTP / Phase 2 decode panels below instead.",
+      "title": "Legacy single-phase fetch latency (avg / max-bucket)",
+      "description": "internal_transactions_fetch_duration_microseconds — single-phase JSON-RPC round-trip for trace_block / debug_trace per BufferedTask batch. Only populated for non-Geth variants (Nethermind/Erigon/Besu/RSK/Filecoin) or :transaction_params mode. EMPTY when Geth two-phase debug_traceBlockByNumber is active — see the Phase 1 raw HTTP / Phase 2 decode panels below instead.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le, data_type) (rate(internal_transactions_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "p50 {{data_type}}"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, data_type) (rate(internal_transactions_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "B",
-          "legendFormat": "p95 {{data_type}}"
-        },
-        {
           "expr": "sum by (data_type) (rate(internal_transactions_fetch_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (data_type) (rate(internal_transactions_fetch_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "C",
+          "refId": "A",
           "legendFormat": "avg {{data_type}}"
+        },
+        {
+          "expr": "histogram_quantile(1.0, sum by (le, data_type) (rate(internal_transactions_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "max-bucket {{data_type}}"
         }
       ]
     },
     {
       "id": 25,
       "type": "timeseries",
-      "title": "Internal-tx import (DB write) latency",
-      "description": "histogram_quantile of internal_transactions_import_duration_microseconds — Chain.import call duration for an internal-tx batch, success or failure. Climbing p95 here = Postgres / DB pool is the bottleneck.",
+      "title": "Internal-tx import (DB write) latency (avg / max-bucket)",
+      "description": "internal_transactions_import_duration_microseconds — Chain.import call duration for an internal-tx batch, success or failure. Like block import, this wraps the whole transaction (pool checkout + BEGIN + upserts + COMMIT), so it already includes any DB-contention wait. Climbing avg = Postgres / DB pool is the bottleneck.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le, data_type) (rate(internal_transactions_import_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "p50 {{data_type}}"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, data_type) (rate(internal_transactions_import_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "B",
-          "legendFormat": "p95 {{data_type}}"
-        },
-        {
           "expr": "sum by (data_type) (rate(internal_transactions_import_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (data_type) (rate(internal_transactions_import_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "C",
+          "refId": "A",
           "legendFormat": "avg {{data_type}}"
+        },
+        {
+          "expr": "histogram_quantile(1.0, sum by (le, data_type) (rate(internal_transactions_import_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "max-bucket {{data_type}}"
         }
       ]
     },
@@ -534,81 +517,66 @@
     {
       "id": 51,
       "type": "timeseries",
-      "title": "Phase 1 — raw HTTP fetch latency (p50/p95)",
-      "description": "histogram_quantile of internal_transactions_raw_fetch_duration_microseconds — HTTP round-trip only, NO gunzip / NO Jason.decode. Should be much smaller than the legacy `Internal-tx fetch (JSON-RPC) latency` panel. If p95 climbs here the RPC node is the bottleneck; if it stays flat while throughput drops, look at phase 2.",
+      "title": "Phase 1 — raw HTTP fetch latency (avg / max-bucket)",
+      "description": "internal_transactions_raw_fetch_duration_microseconds — HTTP round-trip only, NO gunzip / NO Jason.decode. Should be much smaller than the legacy `Internal-tx fetch (JSON-RPC) latency` panel. If avg climbs here the RPC node is the bottleneck; if it stays flat while throughput drops, look at phase 2.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 67 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le, data_type) (rate(internal_transactions_raw_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "p50 {{data_type}}"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, data_type) (rate(internal_transactions_raw_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "B",
-          "legendFormat": "p95 {{data_type}}"
-        },
-        {
           "expr": "sum by (data_type) (rate(internal_transactions_raw_fetch_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (data_type) (rate(internal_transactions_raw_fetch_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "C",
+          "refId": "A",
           "legendFormat": "avg {{data_type}}"
+        },
+        {
+          "expr": "histogram_quantile(1.0, sum by (le, data_type) (rate(internal_transactions_raw_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "max-bucket {{data_type}}"
         }
       ]
     },
     {
       "id": 52,
       "type": "timeseries",
-      "title": "Phase 2 — decode + transform latency (p50/p95)",
-      "description": "histogram_quantile of internal_transactions_decode_duration_microseconds — gunzip + Jason.decode + trace flattening + transform, run under HeavyStageGate. Bounded by permit count; if this saturates and `Heavy-stage gate wait` climbs, raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS — at the cost of higher peak memory.",
+      "title": "Phase 2 — decode + transform latency (avg / max-bucket)",
+      "description": "internal_transactions_decode_duration_microseconds — gunzip + Jason.decode + trace flattening + transform, run under HeavyStageGate. Bounded by permit count; if this saturates and `Heavy-stage gate wait` climbs, raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS — at the cost of higher peak memory.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 67 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le, data_type) (rate(internal_transactions_decode_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "p50 {{data_type}}"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, data_type) (rate(internal_transactions_decode_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "B",
-          "legendFormat": "p95 {{data_type}}"
-        },
-        {
           "expr": "sum by (data_type) (rate(internal_transactions_decode_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (data_type) (rate(internal_transactions_decode_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "C",
+          "refId": "A",
           "legendFormat": "avg {{data_type}}"
+        },
+        {
+          "expr": "histogram_quantile(1.0, sum by (le, data_type) (rate(internal_transactions_decode_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "max-bucket {{data_type}}"
         }
       ]
     },
     {
       "id": 53,
       "type": "timeseries",
-      "title": "Heavy-stage gate wait (p50/p95)",
-      "description": "histogram_quantile of internal_transactions_heavy_gate_wait_duration_microseconds — time a BufferedTask task spends parked at HeavyStageGate before acquiring a permit. Sustained nonzero values = gate is the bottleneck. Knobs: raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS (more memory) or lower INDEXER_INTERNAL_TRANSACTIONS_CONCURRENCY / BATCH_SIZE (less pipeline pressure).",
+      "title": "Heavy-stage gate wait (avg / max-bucket)",
+      "description": "internal_transactions_heavy_gate_wait_duration_microseconds — time a BufferedTask task spends parked at HeavyStageGate before acquiring a permit. Sustained nonzero values = gate is the bottleneck. Knobs: raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS (more memory) or lower INDEXER_INTERNAL_TRANSACTIONS_CONCURRENCY / BATCH_SIZE (less pipeline pressure).",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 75 },
       "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(internal_transactions_heavy_gate_wait_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "p50"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(internal_transactions_heavy_gate_wait_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "B",
-          "legendFormat": "p95"
-        },
-        {
           "expr": "sum(rate(internal_transactions_heavy_gate_wait_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_heavy_gate_wait_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "C",
+          "refId": "A",
           "legendFormat": "avg"
+        },
+        {
+          "expr": "histogram_quantile(1.0, sum by (le) (rate(internal_transactions_heavy_gate_wait_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "max-bucket"
         }
       ]
     },
@@ -632,54 +600,182 @@
     {
       "id": 55,
       "type": "timeseries",
-      "title": "Raw response body size — compressed (p50/p95/p99, bytes)",
-      "description": "histogram_quantile of internal_transactions_raw_body_bytes — size of each debug_traceBlockByNumber HTTP body (compressed if ETHEREUM_JSONRPC_HTTP_GZIP_ENABLED=true, else uncompressed). Bounds the memory held by parked tasks waiting on HeavyStageGate. Spiking p99 = a small number of huge blocks; consider lowering INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE.",
+      "title": "Raw response body size — compressed (avg / max-bucket, bytes)",
+      "description": "internal_transactions_raw_body_bytes — size of each debug_traceBlockByNumber HTTP body (compressed if ETHEREUM_JSONRPC_HTTP_GZIP_ENABLED=true, else uncompressed). Bounds the memory held by parked tasks waiting on HeavyStageGate. Spiking max-bucket = batches landing in the largest size bucket — consider lowering INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE.",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 83 },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(internal_transactions_raw_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "sum(rate(internal_transactions_raw_body_bytes_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_raw_body_bytes_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "A",
-          "legendFormat": "p50"
+          "legendFormat": "avg"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(internal_transactions_raw_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(1.0, sum by (le) (rate(internal_transactions_raw_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
           "refId": "B",
-          "legendFormat": "p95"
-        },
-        {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(internal_transactions_raw_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
-          "refId": "C",
-          "legendFormat": "p99"
+          "legendFormat": "max-bucket"
         }
       ]
     },
     {
       "id": 56,
       "type": "timeseries",
-      "title": "Decompressed body size (p50/p95/p99, bytes)",
-      "description": "histogram_quantile of internal_transactions_decompressed_body_bytes — size of each debug_traceBlockByNumber response after gunzip, one observation per HTTP round-trip. Peak Elixir-term memory during decode ≈ p95 × HeavyStageGate permits. Divide by the compressed panel's p95 for the wire-compression ratio (typically 10–50× for trace payloads).",
+      "title": "Decompressed body size (avg / max-bucket, bytes)",
+      "description": "internal_transactions_decompressed_body_bytes — size of each debug_traceBlockByNumber response after gunzip, one observation per HTTP round-trip. Peak Elixir-term memory during decode ≈ max-bucket × HeavyStageGate permits. Divide by the compressed panel's avg for the wire-compression ratio (typically 10–50× for trace payloads).",
       "datasource": { "type": "prometheus", "uid": "${prom}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 83 },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "sum(rate(internal_transactions_decompressed_body_bytes_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_decompressed_body_bytes_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "A",
-          "legendFormat": "p50"
+          "legendFormat": "avg"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(1.0, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
           "refId": "B",
-          "legendFormat": "p95"
+          "legendFormat": "max-bucket"
+        }
+      ]
+    },
+
+    {
+      "id": 70,
+      "type": "row",
+      "title": "Internal-tx queue",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 91 },
+      "collapsed": false
+    },
+    {
+      "id": 72,
+      "type": "stat",
+      "title": "Buffer queue size",
+      "description": "Total items the InternalTransaction BufferedTask currently holds in memory across current_buffer, current_front_buffer and bound_queue. Near zero for an extended period while indexing is supposed to be active = BufferedTask is starved (typically poll:false + no block imports calling async_fetch). A restart re-runs init and refills.",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 92 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "max(internal_transactions_buffer_queue_size{job=\"$job\", instance=~\"$instance\"})", "refId": "A", "legendFormat": "buffer" }
+      ]
+    },
+    {
+      "id": 73,
+      "type": "stat",
+      "title": "Buffer block — min",
+      "description": "Lowest block_number currently held in the BufferedTask's in-memory state.",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 92 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "max(internal_transactions_buffer_block_min{job=\"$job\", instance=~\"$instance\"})", "refId": "A", "legendFormat": "min" }
+      ]
+    },
+    {
+      "id": 74,
+      "type": "stat",
+      "title": "Buffer block — max",
+      "description": "Highest block_number currently held in the BufferedTask's in-memory state.",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 92 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "max(internal_transactions_buffer_block_max{job=\"$job\", instance=~\"$instance\"})", "refId": "A", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 75,
+      "type": "stat",
+      "title": "Last indexed block",
+      "description": "Highest block_number from the most recently imported internal-tx batch. Flat line while pipeline stages are non-zero = imports stalled. With FETCH_ORDER=desc this hugs the chain tip as a freshly populated batch always carries the highest available block.",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 92 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "max(internal_transactions_last_indexed_block{job=\"$job\", instance=~\"$instance\"})", "refId": "A", "legendFormat": "last" }
+      ]
+    },
+    {
+      "id": 76,
+      "type": "timeseries",
+      "title": "Buffer queue size over time",
+      "description": "Total items the BufferedTask is holding in memory. Drops to zero while indexing is supposed to be active = starvation: init's one-shot stream completed and nothing is refilling the buffer.",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 97 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        { "expr": "max(internal_transactions_buffer_queue_size{job=\"$job\", instance=~\"$instance\"})", "refId": "A", "legendFormat": "buffer (in-memory)" }
+      ]
+    },
+    {
+      "id": 77,
+      "type": "timeseries",
+      "title": "Buffer block range + last indexed",
+      "description": "Min and max block_number currently held in the BufferedTask's in-memory state, plus the last successfully imported block. With FETCH_ORDER=desc the buffer max stays near chain tip and the min drifts down as catchup progresses.",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 97 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min", "max"] } },
+      "targets": [
+        { "expr": "max(internal_transactions_buffer_block_min{job=\"$job\", instance=~\"$instance\"})", "refId": "A", "legendFormat": "buffer min" },
+        { "expr": "max(internal_transactions_buffer_block_max{job=\"$job\", instance=~\"$instance\"})", "refId": "B", "legendFormat": "buffer max" },
+        { "expr": "max(internal_transactions_last_indexed_block{job=\"$job\", instance=~\"$instance\"})", "refId": "C", "legendFormat": "last indexed" }
+      ]
+    },
+
+    {
+      "id": 60,
+      "type": "row",
+      "title": "Pipeline saturation",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 105 },
+      "collapsed": false
+    },
+    {
+      "id": 61,
+      "type": "timeseries",
+      "title": "Stage time spent per second (worker-equivalents)",
+      "description": "sum(rate(<metric>_sum)) / 1e6 for each duration histogram — total wall-clock work performed in each stage per wall-clock second, measured in worker-equivalents. A value of N means the stage is doing N seconds of work per second, i.e. it requires N workers running fully busy. Compare against each stage's configured concurrency (block fetcher pool size, INDEXER_INTERNAL_TRANSACTIONS_CONCURRENCY, INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS, DB pool size) — the stage whose load is closest to its limit is the throughput bottleneck. This is the most reliable saturation signal in the dashboard.",
+      "datasource": { "type": "prometheus", "uid": "${prom}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 106 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2, "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "targets": [
+        {
+          "expr": "sum(rate(block_import_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
+          "refId": "A",
+          "legendFormat": "block_import"
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "sum(rate(block_batch_fetch_request_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
+          "refId": "B",
+          "legendFormat": "block_batch_fetch"
+        },
+        {
+          "expr": "sum(rate(internal_transactions_fetch_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
           "refId": "C",
-          "legendFormat": "p99"
+          "legendFormat": "itx_fetch (legacy)"
+        },
+        {
+          "expr": "sum(rate(internal_transactions_raw_fetch_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
+          "refId": "D",
+          "legendFormat": "itx_raw_fetch"
+        },
+        {
+          "expr": "sum(rate(internal_transactions_decode_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
+          "refId": "E",
+          "legendFormat": "itx_decode"
+        },
+        {
+          "expr": "sum(rate(internal_transactions_import_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
+          "refId": "F",
+          "legendFormat": "itx_import"
         }
       ]
     }

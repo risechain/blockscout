@@ -104,6 +104,34 @@ defmodule Indexer.Prometheus.Instrumenter do
     help: "Raw body size returned by debug_traceBlockByNumber (bytes), one observation per HTTP round-trip"
   ]
 
+  # In-memory snapshot of the BufferedTask's queue for the InternalTransaction
+  # fetcher: total items (sum of current_buffer + current_front_buffer +
+  # bound_queue) and the block_number range of those items. If size sits at
+  # zero while pending_block_operations in the DB is non-empty, the
+  # BufferedTask is starved — workers have no work even though the DB has
+  # plenty (typically because `poll: false` and async_fetch isn't being
+  # called).
+  @gauge [
+    name: :internal_transactions_buffer_queue_size,
+    help: "Total items in Indexer.Fetcher.InternalTransaction BufferedTask's in-memory state"
+  ]
+  @gauge [
+    name: :internal_transactions_buffer_block_min,
+    help: "Lowest block_number held in the InternalTransaction BufferedTask's in-memory state (0 if empty)"
+  ]
+  @gauge [
+    name: :internal_transactions_buffer_block_max,
+    help: "Highest block_number held in the InternalTransaction BufferedTask's in-memory state (0 if empty)"
+  ]
+
+  # Highest block_number observed in any successfully imported internal-tx
+  # batch since process start. Updates per-batch on the import success path,
+  # so a flat line means imports have stopped.
+  @gauge [
+    name: :internal_transactions_last_indexed_block,
+    help: "Highest block_number from a successfully imported internal-tx batch"
+  ]
+
   @gauge [name: :delay_from_last_node_block, help: "Delay from the last block on the node in seconds"]
 
   @counter [name: :import_errors_count, help: "Number of database import errors"]
@@ -270,6 +298,40 @@ defmodule Indexer.Prometheus.Instrumenter do
   @spec observe_internal_transactions_raw_body_bytes(bytes :: non_neg_integer()) :: :ok
   def observe_internal_transactions_raw_body_bytes(bytes) do
     Histogram.observe([name: :internal_transactions_raw_body_bytes], bytes)
+  end
+
+  @doc """
+  Sets the total in-memory item count of the InternalTransaction BufferedTask.
+  """
+  @spec set_internal_transactions_buffer_queue_size(non_neg_integer()) :: :ok
+  def set_internal_transactions_buffer_queue_size(value) do
+    Gauge.set([name: :internal_transactions_buffer_queue_size], value)
+  end
+
+  @doc """
+  Sets the lowest block_number currently held in the InternalTransaction
+  BufferedTask's in-memory state.
+  """
+  @spec set_internal_transactions_buffer_block_min(non_neg_integer()) :: :ok
+  def set_internal_transactions_buffer_block_min(value) do
+    Gauge.set([name: :internal_transactions_buffer_block_min], value)
+  end
+
+  @doc """
+  Sets the highest block_number currently held in the InternalTransaction
+  BufferedTask's in-memory state.
+  """
+  @spec set_internal_transactions_buffer_block_max(non_neg_integer()) :: :ok
+  def set_internal_transactions_buffer_block_max(value) do
+    Gauge.set([name: :internal_transactions_buffer_block_max], value)
+  end
+
+  @doc """
+  Sets the highest block_number from the most recent successful internal-tx import batch.
+  """
+  @spec set_internal_transactions_last_indexed_block(non_neg_integer()) :: :ok
+  def set_internal_transactions_last_indexed_block(value) do
+    Gauge.set([name: :internal_transactions_last_indexed_block], value)
   end
 
   @doc """

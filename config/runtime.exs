@@ -1671,6 +1671,10 @@ config :indexer, Indexer.Utils.EventNotificationsCleaner,
     app_mode == :indexer && ConfigHelper.parse_bool_env_var("INDEXER_DB_EVENT_NOTIFICATIONS_CLEANUP_ENABLED", "true"),
   max_age: ConfigHelper.parse_time_env_var("INDEXER_DB_EVENT_NOTIFICATIONS_CLEANUP_MAX_AGE", "5m")
 
+config :indexer, Indexer.Prometheus.InternalTransactionQueueMetrics,
+  enabled: app_mode in [:indexer, :all] && ConfigHelper.parse_bool_env_var("INDEXER_METRICS_ENABLED", "true"),
+  interval: ConfigHelper.parse_time_env_var("INDEXER_INTERNAL_TRANSACTIONS_QUEUE_METRICS_INTERVAL", "30s")
+
 config :indexer, Indexer.Prometheus.Metrics,
   enabled: app_mode in [:indexer, :all] && ConfigHelper.parse_bool_env_var("INDEXER_METRICS_ENABLED", "true"),
   specific_metrics_enabled?: %{

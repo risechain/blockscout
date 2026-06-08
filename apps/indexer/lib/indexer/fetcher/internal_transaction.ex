@@ -407,13 +407,18 @@ defmodule Indexer.Fetcher.InternalTransaction do
 
     case imports do
       {:ok, imported} ->
-        Prometheus.Instrumenter.inc_internal_transactions_imported(
-          length(internal_transactions_params_marked)
-        )
+        Prometheus.Instrumenter.inc_internal_transactions_imported(length(internal_transactions_params_marked))
 
-        Prometheus.Instrumenter.inc_blocks_internal_transactions_indexed(
-          length(data_to_block_numbers(transactions_params_or_unique_numbers, data_type))
-        )
+        imported_block_numbers = data_to_block_numbers(transactions_params_or_unique_numbers, data_type)
+        Prometheus.Instrumenter.inc_blocks_internal_transactions_indexed(length(imported_block_numbers))
+
+        # Flat line on this gauge while the rest of the pipeline metrics are
+        # zero means imports have stalled; an advancing value tracks where the
+        # fetcher's effective tip is moving (decreasing for desc FETCH_ORDER).
+        case imported_block_numbers do
+          [_ | _] = nums -> Prometheus.Instrumenter.set_internal_transactions_last_indexed_block(Enum.max(nums))
+          _ -> :ok
+        end
 
         Accounts.drop(imported[:addresses])
         Blocks.drop_nonconsensus(imported[:remove_consensus_of_missing_transactions_blocks])
