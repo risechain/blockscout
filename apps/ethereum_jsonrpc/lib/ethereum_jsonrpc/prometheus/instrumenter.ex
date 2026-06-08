@@ -12,11 +12,20 @@ defmodule EthereumJSONRPC.Prometheus.Instrumenter do
   # observation per HTTP round-trip. Compared with internal_transactions_raw_body_bytes
   # (compressed) gives the on-the-wire compression ratio. The peak Elixir-term
   # memory during decode is roughly proportional to this size multiplied by the
-  # HeavyStageGate permit count.
-  @histogram [
-    name: :internal_transactions_decompressed_body_bytes,
-    buckets: [1_000_000, 10_000_000, 100_000_000, 1_000_000_000, 10_000_000_000],
-    help: "Decompressed body size returned by debug_traceBlockByNumber (bytes), one observation per HTTP round-trip"
+  # HeavyStageGate permit count. Shape: sum + count + last gauge (same pattern
+  # as other duration/size metrics; avg via rate(_sum)/rate(_count), max via
+  # max_over_time(_last[…])).
+  @counter [
+    name: :internal_transactions_decompressed_body_bytes_sum,
+    help: "Cumulative decompressed body bytes from debug_traceBlockByNumber"
+  ]
+  @counter [
+    name: :internal_transactions_decompressed_body_bytes_count,
+    help: "Number of decompressed body size observations"
+  ]
+  @gauge [
+    name: :internal_transactions_decompressed_body_bytes_last,
+    help: "Most recent decompressed body size (bytes)"
   ]
 
   @doc """
@@ -51,6 +60,8 @@ defmodule EthereumJSONRPC.Prometheus.Instrumenter do
   """
   @spec observe_internal_transactions_decompressed_body_bytes(non_neg_integer()) :: :ok
   def observe_internal_transactions_decompressed_body_bytes(bytes) do
-    Histogram.observe([name: :internal_transactions_decompressed_body_bytes], bytes)
+    Counter.inc([name: :internal_transactions_decompressed_body_bytes_sum], bytes)
+    Counter.inc(name: :internal_transactions_decompressed_body_bytes_count)
+    Gauge.set([name: :internal_transactions_decompressed_body_bytes_last], bytes)
   end
 end

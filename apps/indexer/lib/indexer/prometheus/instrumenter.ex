@@ -10,117 +10,167 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   @rollups [:arbitrum, :zksync, :optimism, :polygon_zkevm, :scroll]
 
-  @histogram [
-    name: :block_full_processing_duration_microseconds,
-    labels: [:fetcher],
-    buckets: [1000, 5000, 10000, 100_000],
-    duration_unit: :microseconds,
-    help: "Block whole processing time including fetch and import"
-  ]
-
-  @histogram [
-    name: :block_import_duration_microseconds,
-    labels: [:fetcher],
-    buckets: [1000, 5000, 10000, 100_000],
-    duration_unit: :microseconds,
-    help: "Block import time"
-  ]
-
-  @histogram [
-    name: :block_batch_fetch_request_duration_microseconds,
-    labels: [:fetcher],
-    buckets: [1000, 5000, 10000, 100_000],
-    duration_unit: :microseconds,
-    help: "Block fetch batch request processing time"
-  ]
-
-  # Wider buckets than the block-fetcher histograms because trace_block / debug_trace
-  # routinely take 100ms-seconds rather than tens of ms. data_type lets you see whether
-  # block-level vs per-transaction tracing has different latency profiles on this node.
-  @histogram [
-    name: :internal_transactions_fetch_duration_microseconds,
-    labels: [:data_type],
-    buckets: [10_000, 100_000, 1_000_000, 10_000_000],
-    duration_unit: :microseconds,
-    help: "Internal transactions JSON-RPC fetch time (one observation per BufferedTask batch, success or failure)"
-  ]
-
-  # Chain.import time per internal-tx batch. Histograms were dropped here in
-  # favor of (sum counter + count counter + latest-value gauge) so we don't
-  # spend cardinality on bucket boundaries that get blown past by minutes-long
-  # outliers. Avg = rate(_sum)/rate(_count) — same query shape as the old
-  # histogram. The `_last_microseconds` gauge gives Grafana a value to chart
-  # max_over_time() against; note Prometheus only samples this gauge at scrape
-  # time, so outliers landing between scrapes are NOT guaranteed to be seen.
-  # For true tail visibility consider a "slow event" counter on top.
+  # Duration metrics are shaped as (sum counter + count counter + last gauge)
+  # rather than histograms. Bucket boundaries on histograms hide multi-minute
+  # outliers in the +Inf bucket and bias arithmetic-mean readouts low; the
+  # trio gives a bucket-independent average via rate(_sum)/rate(_count) and a
+  # latest-value gauge that Grafana charts with max_over_time(). Caveat: the
+  # `_last` gauge is sampled at scrape time, so single outliers between
+  # scrapes may be missed — add a "slow event" counter if guaranteed tail
+  # coverage is needed.
   @counter [
-    name: :internal_transactions_import_duration_sum_microseconds,
-    labels: [:data_type],
-    help: "Cumulative Chain.import time for internal-tx batches (µs). Pair with _count for avg."
+    name: :block_full_processing_duration_microseconds_sum,
+    labels: [:fetcher],
+    help: "Cumulative block full-processing time including fetch and import (µs)"
   ]
   @counter [
-    name: :internal_transactions_import_duration_count,
+    name: :block_full_processing_duration_microseconds_count,
+    labels: [:fetcher],
+    help: "Number of block full-processing observations"
+  ]
+  @gauge [
+    name: :block_full_processing_duration_microseconds_last,
+    labels: [:fetcher],
+    help: "Most recent block full-processing duration (µs)"
+  ]
+
+  @counter [
+    name: :block_import_duration_microseconds_sum,
+    labels: [:fetcher],
+    help: "Cumulative block import time, per block (µs)"
+  ]
+  @counter [
+    name: :block_import_duration_microseconds_count,
+    labels: [:fetcher],
+    help: "Number of block import observations"
+  ]
+  @gauge [
+    name: :block_import_duration_microseconds_last,
+    labels: [:fetcher],
+    help: "Most recent block import duration, per block (µs)"
+  ]
+
+  @counter [
+    name: :block_batch_fetch_request_duration_microseconds_sum,
+    labels: [:fetcher],
+    help: "Cumulative block-batch fetch request time (µs)"
+  ]
+  @counter [
+    name: :block_batch_fetch_request_duration_microseconds_count,
+    labels: [:fetcher],
+    help: "Number of block-batch fetch request observations"
+  ]
+  @gauge [
+    name: :block_batch_fetch_request_duration_microseconds_last,
+    labels: [:fetcher],
+    help: "Most recent block-batch fetch request duration (µs)"
+  ]
+
+  # Legacy single-phase JSON-RPC fetch (non-Geth variants or :transaction_params).
+  # data_type lets you see whether block-level vs per-transaction tracing has
+  # different latency profiles on this node.
+  @counter [
+    name: :internal_transactions_fetch_duration_microseconds_sum,
+    labels: [:data_type],
+    help: "Cumulative internal-tx single-phase JSON-RPC fetch time (µs)"
+  ]
+  @counter [
+    name: :internal_transactions_fetch_duration_microseconds_count,
+    labels: [:data_type],
+    help: "Number of single-phase internal-tx fetch observations (success or failure)"
+  ]
+  @gauge [
+    name: :internal_transactions_fetch_duration_microseconds_last,
+    labels: [:data_type],
+    help: "Most recent single-phase internal-tx fetch duration (µs)"
+  ]
+
+  # Chain.import time per internal-tx batch.
+  @counter [
+    name: :internal_transactions_import_duration_microseconds_sum,
+    labels: [:data_type],
+    help: "Cumulative Chain.import time for internal-tx batches (µs)"
+  ]
+  @counter [
+    name: :internal_transactions_import_duration_microseconds_count,
     labels: [:data_type],
     help: "Number of Chain.import calls for internal-tx batches (success or failure)"
   ]
   @gauge [
-    name: :internal_transactions_import_duration_last_microseconds,
+    name: :internal_transactions_import_duration_microseconds_last,
     labels: [:data_type],
-    help: "Most recent Chain.import duration for an internal-tx batch (µs). Use max_over_time() for windowed max."
+    help: "Most recent Chain.import duration for an internal-tx batch (µs)"
   ]
 
   # Phase-1 timing — HTTP round-trip only, no gunzip, no Jason.decode. Should be
-  # much smaller than the legacy `internal_transactions_fetch_duration` because
-  # we no longer pay decode cost in this stage. data_type = :block_number for
-  # the Geth two-phase path; other variants still use the single-phase fetch
-  # and are recorded under `internal_transactions_fetch_duration` instead.
-  @histogram [
-    name: :internal_transactions_raw_fetch_duration_microseconds,
+  # much smaller than `internal_transactions_fetch_duration` (which includes
+  # decode) on the Geth two-phase path.
+  @counter [
+    name: :internal_transactions_raw_fetch_duration_microseconds_sum,
     labels: [:data_type],
-    buckets: [10_000, 100_000, 1_000_000, 10_000_000],
-    duration_unit: :microseconds,
-    help: "Internal transactions raw HTTP fetch time (no gunzip/decode), one observation per batch"
+    help: "Cumulative raw HTTP fetch time, no gunzip/decode (µs)"
+  ]
+  @counter [
+    name: :internal_transactions_raw_fetch_duration_microseconds_count,
+    labels: [:data_type],
+    help: "Number of raw HTTP fetch observations"
+  ]
+  @gauge [
+    name: :internal_transactions_raw_fetch_duration_microseconds_last,
+    labels: [:data_type],
+    help: "Most recent raw HTTP fetch duration (µs)"
   ]
 
   # Phase-2 timing — gunzip + Jason.decode + trace flattening + transform.
   # Combined with raw_fetch above, you can tell whether time is spent on the
   # wire or in memory.
-  @histogram [
-    name: :internal_transactions_decode_duration_microseconds,
+  @counter [
+    name: :internal_transactions_decode_duration_microseconds_sum,
     labels: [:data_type],
-    buckets: [10_000, 100_000, 1_000_000, 10_000_000],
-    duration_unit: :microseconds,
-    help: "Internal transactions decode + transform time under heavy-stage gate, one observation per batch"
+    help: "Cumulative decode + transform time under heavy-stage gate (µs)"
+  ]
+  @counter [
+    name: :internal_transactions_decode_duration_microseconds_count,
+    labels: [:data_type],
+    help: "Number of decode observations"
+  ]
+  @gauge [
+    name: :internal_transactions_decode_duration_microseconds_last,
+    labels: [:data_type],
+    help: "Most recent decode + transform duration (µs)"
   ]
 
   # Time a BufferedTask task spends parked at HeavyStageGate before acquiring a
-  # permit. Sustained nonzero values mean the gate is the bottleneck and you
-  # may want to raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS — at the cost
-  # of higher peak memory.
-  @histogram [
-    name: :internal_transactions_heavy_gate_wait_duration_microseconds,
-    buckets: [1_000, 100_000, 1_000_000, 10_000_000, 60_000_000],
-    duration_unit: :microseconds,
-    help: "Time spent waiting on the InternalTransaction heavy-stage permit"
+  # permit. Sustained nonzero values mean the gate is the bottleneck.
+  @counter [
+    name: :internal_transactions_heavy_gate_wait_duration_microseconds_sum,
+    help: "Cumulative time spent waiting on the InternalTransaction heavy-stage permit (µs)"
+  ]
+  @counter [
+    name: :internal_transactions_heavy_gate_wait_duration_microseconds_count,
+    help: "Number of heavy-stage gate wait observations"
+  ]
+  @gauge [
+    name: :internal_transactions_heavy_gate_wait_duration_microseconds_last,
+    help: "Most recent heavy-stage gate wait duration (µs)"
   ]
 
   # Full duration of the work executed under one HeavyStageGate permit. The
   # gate wraps decode + Chain.import + bookkeeping, so this is decode_duration
   # PLUS everything downstream until the permit is released. The gap between
-  # this and decode_duration is the unmeasured work that the gate is actually
-  # serializing — usually Chain.import time. Shape: sum + count + last gauge
-  # (same trade-off as import_duration above).
+  # this and decode_duration is the unmeasured work the gate is actually
+  # serializing — usually Chain.import time.
   @counter [
-    name: :internal_transactions_gate_hold_duration_sum_microseconds,
-    help: "Cumulative HeavyStageGate hold time across all permits (µs). Pair with _count for avg."
+    name: :internal_transactions_gate_hold_duration_microseconds_sum,
+    help: "Cumulative HeavyStageGate hold time across all permits (µs)"
   ]
   @counter [
-    name: :internal_transactions_gate_hold_duration_count,
+    name: :internal_transactions_gate_hold_duration_microseconds_count,
     help: "Number of HeavyStageGate permit acquisitions that completed (success or failure)"
   ]
   @gauge [
-    name: :internal_transactions_gate_hold_duration_last_microseconds,
-    help: "Most recent HeavyStageGate permit hold duration (µs). Use max_over_time() for windowed max."
+    name: :internal_transactions_gate_hold_duration_microseconds_last,
+    help: "Most recent HeavyStageGate permit hold duration (µs)"
   ]
 
   # Current number of decode/import slots in use. Plateaus at the configured
@@ -133,10 +183,17 @@ defmodule Indexer.Prometheus.Instrumenter do
   # Bytes of compressed (or uncompressed if gzip disabled) raw response body
   # returned by debug_traceBlockByNumber. Useful for sizing the gate vs box
   # memory — multiply by permit count for a rough peak-memory estimate.
-  @histogram [
-    name: :internal_transactions_raw_body_bytes,
-    buckets: [100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000],
-    help: "Raw body size returned by debug_traceBlockByNumber (bytes), one observation per HTTP round-trip"
+  @counter [
+    name: :internal_transactions_raw_body_bytes_sum,
+    help: "Cumulative raw body size returned by debug_traceBlockByNumber (bytes)"
+  ]
+  @counter [
+    name: :internal_transactions_raw_body_bytes_count,
+    help: "Number of raw body size observations (one per HTTP round-trip)"
+  ]
+  @gauge [
+    name: :internal_transactions_raw_body_bytes_last,
+    help: "Most recent raw body size from debug_traceBlockByNumber (bytes)"
   ]
 
   # In-memory snapshot of the BufferedTask's queue for the InternalTransaction
@@ -251,91 +308,89 @@ defmodule Indexer.Prometheus.Instrumenter do
     :ok
   end
 
-  @doc """
-  Defines the metric for the full processing time of a block (in microseconds).
-  """
+  # Every duration setter below writes the same trio: cumulative-µs counter,
+  # count counter, latest-value gauge. Use rate(_sum)/rate(_count) for avg and
+  # max_over_time(_last[…]) for a windowed max approximation. The _last gauge
+  # is sampled at scrape time, so very brief outliers may not register —
+  # acceptable trade-off in exchange for not depending on bucket boundaries.
+
+  @doc "Records the full processing time of a block (µs)."
   @spec set_block_full_process(time :: integer(), fetcher :: atom()) :: :ok
   def set_block_full_process(time, fetcher) do
-    Histogram.observe([name: :block_full_processing_duration_microseconds, labels: [fetcher]], time)
+    labels = [fetcher]
+    Counter.inc([name: :block_full_processing_duration_microseconds_sum, labels: labels], time)
+    Counter.inc(name: :block_full_processing_duration_microseconds_count, labels: labels)
+    Gauge.set([name: :block_full_processing_duration_microseconds_last, labels: labels], time)
   end
 
-  @doc """
-  Defines the metric for the import time of a block (in microseconds).
-  """
+  @doc "Records block import time (µs)."
   @spec set_block_import(time :: float(), fetcher :: atom()) :: :ok
   def set_block_import(time, fetcher) do
-    Histogram.observe([name: :block_import_duration_microseconds, labels: [fetcher]], time)
+    labels = [fetcher]
+    Counter.inc([name: :block_import_duration_microseconds_sum, labels: labels], time)
+    Counter.inc(name: :block_import_duration_microseconds_count, labels: labels)
+    Gauge.set([name: :block_import_duration_microseconds_last, labels: labels], time)
   end
 
-  @doc """
-  Defines the metric for the block batch fetch request time (in microseconds).
-  """
+  @doc "Records block batch fetch request time (µs)."
   @spec set_block_batch_fetch(time :: integer(), fetcher :: atom()) :: :ok
   def set_block_batch_fetch(time, fetcher) do
-    Histogram.observe([name: :block_batch_fetch_request_duration_microseconds, labels: [fetcher]], time)
+    labels = [fetcher]
+    Counter.inc([name: :block_batch_fetch_request_duration_microseconds_sum, labels: labels], time)
+    Counter.inc(name: :block_batch_fetch_request_duration_microseconds_count, labels: labels)
+    Gauge.set([name: :block_batch_fetch_request_duration_microseconds_last, labels: labels], time)
   end
 
-  @doc """
-  Records the internal-tx JSON-RPC fetch time (in microseconds) for the given data_type.
-  """
+  @doc "Records the single-phase internal-tx JSON-RPC fetch time (µs)."
   @spec set_internal_transactions_fetch(time :: integer(), data_type :: atom()) :: :ok
   def set_internal_transactions_fetch(time, data_type) do
-    Histogram.observe([name: :internal_transactions_fetch_duration_microseconds, labels: [data_type]], time)
+    labels = [data_type]
+    Counter.inc([name: :internal_transactions_fetch_duration_microseconds_sum, labels: labels], time)
+    Counter.inc(name: :internal_transactions_fetch_duration_microseconds_count, labels: labels)
+    Gauge.set([name: :internal_transactions_fetch_duration_microseconds_last, labels: labels], time)
   end
 
-  @doc """
-  Records the internal-tx Chain.import time (in microseconds) for the given data_type.
-
-  Updates three series:
-    * sum counter — cumulative time, for avg via rate
-    * count counter — number of calls
-    * last gauge — most recent value, for windowed max via max_over_time()
-  """
+  @doc "Records the internal-tx Chain.import time (µs) for the given data_type."
   @spec set_internal_transactions_import(time :: integer(), data_type :: atom()) :: :ok
   def set_internal_transactions_import(time, data_type) do
     labels = [data_type]
-    Counter.inc([name: :internal_transactions_import_duration_sum_microseconds, labels: labels], time)
-    Counter.inc(name: :internal_transactions_import_duration_count, labels: labels)
-    Gauge.set([name: :internal_transactions_import_duration_last_microseconds, labels: labels], time)
+    Counter.inc([name: :internal_transactions_import_duration_microseconds_sum, labels: labels], time)
+    Counter.inc(name: :internal_transactions_import_duration_microseconds_count, labels: labels)
+    Gauge.set([name: :internal_transactions_import_duration_microseconds_last, labels: labels], time)
   end
 
-  @doc """
-  Records the internal-tx raw HTTP fetch time (in microseconds), phase 1 of
-  the two-phase pipeline. No gunzip, no Jason.decode included.
-  """
+  @doc "Records the internal-tx raw HTTP fetch time (µs), phase 1 of the two-phase pipeline."
   @spec set_internal_transactions_raw_fetch(time :: integer(), data_type :: atom()) :: :ok
   def set_internal_transactions_raw_fetch(time, data_type) do
-    Histogram.observe([name: :internal_transactions_raw_fetch_duration_microseconds, labels: [data_type]], time)
+    labels = [data_type]
+    Counter.inc([name: :internal_transactions_raw_fetch_duration_microseconds_sum, labels: labels], time)
+    Counter.inc(name: :internal_transactions_raw_fetch_duration_microseconds_count, labels: labels)
+    Gauge.set([name: :internal_transactions_raw_fetch_duration_microseconds_last, labels: labels], time)
   end
 
-  @doc """
-  Records the internal-tx decode + transform time (in microseconds), phase 2
-  of the two-phase pipeline. Runs under the heavy-stage gate.
-  """
+  @doc "Records decode + transform time (µs) under the heavy-stage gate, phase 2 of the two-phase pipeline."
   @spec set_internal_transactions_decode(time :: integer(), data_type :: atom()) :: :ok
   def set_internal_transactions_decode(time, data_type) do
-    Histogram.observe([name: :internal_transactions_decode_duration_microseconds, labels: [data_type]], time)
+    labels = [data_type]
+    Counter.inc([name: :internal_transactions_decode_duration_microseconds_sum, labels: labels], time)
+    Counter.inc(name: :internal_transactions_decode_duration_microseconds_count, labels: labels)
+    Gauge.set([name: :internal_transactions_decode_duration_microseconds_last, labels: labels], time)
   end
 
-  @doc """
-  Records how long a BufferedTask task waited on the heavy-stage gate before
-  acquiring a permit (in microseconds).
-  """
+  @doc "Records how long a BufferedTask task waited on the heavy-stage gate before acquiring a permit (µs)."
   @spec set_internal_transactions_heavy_gate_wait(time :: integer()) :: :ok
   def set_internal_transactions_heavy_gate_wait(time) do
-    Histogram.observe([name: :internal_transactions_heavy_gate_wait_duration_microseconds], time)
+    Counter.inc([name: :internal_transactions_heavy_gate_wait_duration_microseconds_sum], time)
+    Counter.inc(name: :internal_transactions_heavy_gate_wait_duration_microseconds_count)
+    Gauge.set([name: :internal_transactions_heavy_gate_wait_duration_microseconds_last], time)
   end
 
-  @doc """
-  Records the full duration that one HeavyStageGate permit was held (in
-  microseconds). Compared to `set_internal_transactions_decode/2`, the
-  difference is the work the gate is serializing beyond decode itself.
-  """
+  @doc "Records the full duration that one HeavyStageGate permit was held (µs)."
   @spec set_internal_transactions_gate_hold(time :: integer()) :: :ok
   def set_internal_transactions_gate_hold(time) do
-    Counter.inc([name: :internal_transactions_gate_hold_duration_sum_microseconds], time)
-    Counter.inc(name: :internal_transactions_gate_hold_duration_count)
-    Gauge.set([name: :internal_transactions_gate_hold_duration_last_microseconds], time)
+    Counter.inc([name: :internal_transactions_gate_hold_duration_microseconds_sum], time)
+    Counter.inc(name: :internal_transactions_gate_hold_duration_microseconds_count)
+    Gauge.set([name: :internal_transactions_gate_hold_duration_microseconds_last], time)
   end
 
   @doc """
@@ -352,7 +407,9 @@ defmodule Indexer.Prometheus.Instrumenter do
   """
   @spec observe_internal_transactions_raw_body_bytes(bytes :: non_neg_integer()) :: :ok
   def observe_internal_transactions_raw_body_bytes(bytes) do
-    Histogram.observe([name: :internal_transactions_raw_body_bytes], bytes)
+    Counter.inc([name: :internal_transactions_raw_body_bytes_sum], bytes)
+    Counter.inc(name: :internal_transactions_raw_body_bytes_count)
+    Gauge.set([name: :internal_transactions_raw_body_bytes_last], bytes)
   end
 
   @doc """

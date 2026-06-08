@@ -643,8 +643,8 @@
     {
       "id": 21,
       "type": "timeseries",
-      "title": "Block full processing latency (avg / max-bucket)",
-      "description": "avg = rate(sum)/rate(count), the exact arithmetic mean (bucket-independent, throughput-relevant). max-bucket = histogram_quantile(1.0,...), the upper edge of the highest non-empty bucket — answers \"are observations landing in the slow bucket?\". Histograms don't store true sample min/max, so quantile-based panels were dropped; the legend's \"max\" column shows the per-series maximum of the avg over the time range.",
+      "title": "Block full processing latency (avg / last-max)",
+      "description": "avg = rate(_sum)/rate(_count), the exact arithmetic mean. last-max = max_over_time(_last[…]), the maximum value seen in the _last gauge across scrape samples in the window. Caveat: Prometheus only scrapes the gauge periodically (~15s), so very brief outliers between scrapes may be missed; the average is exact regardless.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -683,17 +683,17 @@
           "legendFormat": "avg {{fetcher}}"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le, fetcher) (rate(block_full_processing_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max by (fetcher) (max_over_time(block_full_processing_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket {{fetcher}}"
+          "legendFormat": "last-max {{fetcher}}"
         }
       ]
     },
     {
       "id": 22,
       "type": "timeseries",
-      "title": "Block import (DB write) latency (avg / max-bucket)",
-      "description": "Wall-clock duration of Chain.import — INCLUDES DB-pool checkout, BEGIN, all upserts (and any row-lock waits from concurrent writers), and COMMIT. No advisory locks in this path, so the metric already captures lock-wait time. Avg is the throughput-relevant figure; max-bucket flags when batches land in the slow bucket.",
+      "title": "Block import (DB write) latency (avg / last-max)",
+      "description": "Wall-clock duration of Chain.import — INCLUDES DB-pool checkout, BEGIN, all upserts (and any row-lock waits from concurrent writers), and COMMIT. No advisory locks in this path, so the metric already captures lock-wait time. Avg is the throughput-relevant figure; last-max shows the slowest observation captured at scrape time.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -732,16 +732,16 @@
           "legendFormat": "avg {{fetcher}}"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le, fetcher) (rate(block_import_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max by (fetcher) (max_over_time(block_import_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket {{fetcher}}"
+          "legendFormat": "last-max {{fetcher}}"
         }
       ]
     },
     {
       "id": 23,
       "type": "timeseries",
-      "title": "Batch fetch (JSON-RPC) latency (avg / max-bucket)",
+      "title": "Batch fetch (JSON-RPC) latency (avg / last-max)",
       "description": "JSON-RPC batch fetch round-trip from the block fetcher.",
       "datasource": {
         "type": "prometheus",
@@ -781,16 +781,16 @@
           "legendFormat": "avg {{fetcher}}"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le, fetcher) (rate(block_batch_fetch_request_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max by (fetcher) (max_over_time(block_batch_fetch_request_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket {{fetcher}}"
+          "legendFormat": "last-max {{fetcher}}"
         }
       ]
     },
     {
       "id": 24,
       "type": "timeseries",
-      "title": "Legacy single-phase fetch latency (avg / max-bucket)",
+      "title": "Legacy single-phase fetch latency (avg / last-max)",
       "description": "internal_transactions_fetch_duration_microseconds — single-phase JSON-RPC round-trip for trace_block / debug_trace per BufferedTask batch. Only populated for non-Geth variants (Nethermind/Erigon/Besu/RSK/Filecoin) or :transaction_params mode. EMPTY when Geth two-phase debug_traceBlockByNumber is active — see the Phase 1 raw HTTP / Phase 2 decode panels below instead.",
       "datasource": {
         "type": "prometheus",
@@ -830,9 +830,9 @@
           "legendFormat": "avg {{data_type}}"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le, data_type) (rate(internal_transactions_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max by (data_type) (max_over_time(internal_transactions_fetch_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket {{data_type}}"
+          "legendFormat": "last-max {{data_type}}"
         }
       ]
     },
@@ -874,12 +874,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (data_type) (rate(internal_transactions_import_duration_sum_microseconds{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (data_type) (rate(internal_transactions_import_duration_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum by (data_type) (rate(internal_transactions_import_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (data_type) (rate(internal_transactions_import_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "avg {{data_type}}"
         },
         {
-          "expr": "max by (data_type) (max_over_time(internal_transactions_import_duration_last_microseconds{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "max by (data_type) (max_over_time(internal_transactions_import_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
           "legendFormat": "last-max {{data_type}}"
         }
@@ -1233,7 +1233,7 @@
     {
       "id": 51,
       "type": "timeseries",
-      "title": "Phase 1 — raw HTTP fetch latency (avg / max-bucket)",
+      "title": "Phase 1 — raw HTTP fetch latency (avg / last-max)",
       "description": "internal_transactions_raw_fetch_duration_microseconds — HTTP round-trip only, NO gunzip / NO Jason.decode. Should be much smaller than the legacy `Internal-tx fetch (JSON-RPC) latency` panel. If avg climbs here the RPC node is the bottleneck; if it stays flat while throughput drops, look at phase 2.",
       "datasource": {
         "type": "prometheus",
@@ -1273,16 +1273,16 @@
           "legendFormat": "avg {{data_type}}"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le, data_type) (rate(internal_transactions_raw_fetch_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max by (data_type) (max_over_time(internal_transactions_raw_fetch_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket {{data_type}}"
+          "legendFormat": "last-max {{data_type}}"
         }
       ]
     },
     {
       "id": 52,
       "type": "timeseries",
-      "title": "Phase 2 — decode + transform latency (avg / max-bucket)",
+      "title": "Phase 2 — decode + transform latency (avg / last-max)",
       "description": "internal_transactions_decode_duration_microseconds — gunzip + Jason.decode + trace flattening + transform, run under HeavyStageGate. Bounded by permit count; if this saturates and `Heavy-stage gate wait` climbs, raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS — at the cost of higher peak memory.",
       "datasource": {
         "type": "prometheus",
@@ -1322,16 +1322,16 @@
           "legendFormat": "avg {{data_type}}"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le, data_type) (rate(internal_transactions_decode_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max by (data_type) (max_over_time(internal_transactions_decode_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket {{data_type}}"
+          "legendFormat": "last-max {{data_type}}"
         }
       ]
     },
     {
       "id": 53,
       "type": "timeseries",
-      "title": "Heavy-stage gate wait (avg / max-bucket)",
+      "title": "Heavy-stage gate wait (avg / last-max)",
       "description": "internal_transactions_heavy_gate_wait_duration_microseconds — time a BufferedTask task spends parked at HeavyStageGate before acquiring a permit. Sustained nonzero values = gate is the bottleneck. Knobs: raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS (more memory) or lower INDEXER_INTERNAL_TRANSACTIONS_CONCURRENCY / BATCH_SIZE (less pipeline pressure).",
       "datasource": {
         "type": "prometheus",
@@ -1371,9 +1371,9 @@
           "legendFormat": "avg"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le) (rate(internal_transactions_heavy_gate_wait_duration_microseconds_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max(max_over_time(internal_transactions_heavy_gate_wait_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket"
+          "legendFormat": "last-max"
         }
       ]
     },
@@ -1432,12 +1432,12 @@
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
       "targets": [
         {
-          "expr": "sum(rate(internal_transactions_gate_hold_duration_sum_microseconds{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_gate_hold_duration_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(internal_transactions_gate_hold_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_gate_hold_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "gate_hold avg"
         },
         {
-          "expr": "max(max_over_time(internal_transactions_gate_hold_duration_last_microseconds{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "max(max_over_time(internal_transactions_gate_hold_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
           "legendFormat": "gate_hold last-max"
         },
@@ -1451,8 +1451,8 @@
     {
       "id": 55,
       "type": "timeseries",
-      "title": "Raw response body size — compressed (avg / max-bucket, bytes)",
-      "description": "internal_transactions_raw_body_bytes — size of each debug_traceBlockByNumber HTTP body (compressed if ETHEREUM_JSONRPC_HTTP_GZIP_ENABLED=true, else uncompressed). Bounds the memory held by parked tasks waiting on HeavyStageGate. Spiking max-bucket = batches landing in the largest size bucket — consider lowering INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE.",
+      "title": "Raw response body size — compressed (avg / last-max, bytes)",
+      "description": "internal_transactions_raw_body_bytes — size of each debug_traceBlockByNumber HTTP body (compressed if ETHEREUM_JSONRPC_HTTP_GZIP_ENABLED=true, else uncompressed). Bounds the memory held by parked tasks waiting on HeavyStageGate. Spiking last-max = recent responses are large — consider lowering INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -1491,17 +1491,17 @@
           "legendFormat": "avg"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le) (rate(internal_transactions_raw_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max(max_over_time(internal_transactions_raw_body_bytes_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket"
+          "legendFormat": "last-max"
         }
       ]
     },
     {
       "id": 56,
       "type": "timeseries",
-      "title": "Decompressed body size (avg / max-bucket, bytes)",
-      "description": "internal_transactions_decompressed_body_bytes — size of each debug_traceBlockByNumber response after gunzip, one observation per HTTP round-trip. Peak Elixir-term memory during decode ≈ max-bucket × HeavyStageGate permits. Divide by the compressed panel's avg for the wire-compression ratio (typically 10–50× for trace payloads).",
+      "title": "Decompressed body size (avg / last-max, bytes)",
+      "description": "internal_transactions_decompressed_body_bytes — size of each debug_traceBlockByNumber response after gunzip, one observation per HTTP round-trip. Peak Elixir-term memory during decode ≈ last-max × HeavyStageGate permits. Divide by the compressed panel's avg for the wire-compression ratio (typically 10–50× for trace payloads).",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -1540,9 +1540,9 @@
           "legendFormat": "avg"
         },
         {
-          "expr": "histogram_quantile(1.0, sum by (le) (rate(internal_transactions_decompressed_body_bytes_bucket{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "expr": "max(max_over_time(internal_transactions_decompressed_body_bytes_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "max-bucket"
+          "legendFormat": "last-max"
         }
       ]
     },
