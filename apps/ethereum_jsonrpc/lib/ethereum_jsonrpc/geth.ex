@@ -96,16 +96,20 @@ defmodule EthereumJSONRPC.Geth do
   @doc """
   Fetches the `t:Explorer.Chain.InternalTransaction.changeset/2` params from the Geth trace URL.
 
-  Single-phase wrapper kept for backward compatibility — equivalent to
-  `fetch_block_internal_transactions_raw/2` followed by
-  `decode_block_internal_transactions/3`. New callers that want to gate the
-  decode step under a memory semaphore should use the two-phase pair directly.
+  Single-phase variant — sends `debug_traceBlockByNumber` via the regular
+  `json_rpc/2` (decoded) transport. Preserves the legacy call contract for
+  callers and tests outside the indexer. Memory-aware callers that want to
+  decouple HTTP fetch from decode should use the two-phase pair
+  `fetch_block_internal_transactions_raw/2` + `decode_block_internal_transactions/3`
+  instead.
   """
   @impl EthereumJSONRPC.Variant
   def fetch_block_internal_transactions(block_numbers, json_rpc_named_arguments) do
-    with {:ok, raw_responses, id_to_params} <-
-           fetch_block_internal_transactions_raw(block_numbers, json_rpc_named_arguments) do
-      decode_block_internal_transactions(raw_responses, id_to_params, json_rpc_named_arguments)
+    id_to_params = id_to_params(block_numbers)
+
+    with {:ok, blocks_responses} <-
+           id_to_params |> debug_trace_block_by_number_requests() |> json_rpc(json_rpc_named_arguments) do
+      blocks_responses_to_internal_transactions_params(blocks_responses, id_to_params, json_rpc_named_arguments)
     end
   end
 
@@ -150,8 +154,17 @@ defmodule EthereumJSONRPC.Geth do
           EthereumJSONRPC.json_rpc_named_arguments()
         ) :: {:ok, [map()]} | {:error, term()}
   def decode_block_internal_transactions(raw_responses, id_to_params, json_rpc_named_arguments) do
-    with {:ok, blocks_responses} <- decode_raw_batch_responses(raw_responses),
-         :ok <- check_errors_exist(blocks_responses, id_to_params) do
+    with {:ok, blocks_responses} <- decode_raw_batch_responses(raw_responses) do
+      blocks_responses_to_internal_transactions_params(blocks_responses, id_to_params, json_rpc_named_arguments)
+    end
+  end
+
+  # Common tail shared by `fetch_block_internal_transactions/2` (single-phase,
+  # decoded transport) and `decode_block_internal_transactions/3` (two-phase,
+  # raw transport): check upstream errors, flatten per-transaction traces, then
+  # parse them through the call-tracer into internal-transaction params.
+  defp blocks_responses_to_internal_transactions_params(blocks_responses, id_to_params, json_rpc_named_arguments) do
+    with :ok <- check_errors_exist(blocks_responses, id_to_params) do
       transactions_params = to_transactions_params(blocks_responses, id_to_params)
 
       {transactions_id_to_params, transactions_responses} =
@@ -175,8 +188,12 @@ defmodule EthereumJSONRPC.Geth do
     decoded =
       raw_responses
       |> Enum.reduce_while([], fn %{body: body, headers: headers}, acc ->
-        body
-        |> EthereumJSONRPC.HTTP.Helper.try_unzip(headers)
+        decompressed = EthereumJSONRPC.HTTP.Helper.try_unzip(body, headers)
+        EthereumJSONRPC.Prometheus.Instrumenter.observe_internal_transactions_decompressed_body_bytes(
+          byte_size(decompressed)
+        )
+
+        decompressed
         |> Jason.decode()
         |> case do
           {:ok, list} when is_list(list) -> {:cont, [list | acc]}

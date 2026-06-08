@@ -66,6 +66,7 @@ defmodule EthereumJSONRPC.HTTP do
   round-trip (a 413/504 split produces more than one). Each body is a JSON
   array the caller must decode and concatenate.
   """
+  @impl Transport
   def json_rpc_raw([batch | _] = chunked_batch_request, options) when is_list(batch) do
     chunked_json_rpc_raw(chunked_batch_request, options, [])
   end

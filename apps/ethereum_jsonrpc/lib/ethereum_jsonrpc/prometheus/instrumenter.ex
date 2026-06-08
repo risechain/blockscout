@@ -8,6 +8,17 @@ defmodule EthereumJSONRPC.Prometheus.Instrumenter do
   @counter [name: :json_rpc_requests_count, labels: [:method], help: "Number of JSON RPC requests"]
   @counter [name: :json_rpc_requests_errors_count, labels: [:method], help: "Number of JSON RPC requests errors"]
 
+  # Size in bytes of the gunzipped debug_traceBlockByNumber response body, one
+  # observation per HTTP round-trip. Compared with internal_transactions_raw_body_bytes
+  # (compressed) gives the on-the-wire compression ratio. The peak Elixir-term
+  # memory during decode is roughly proportional to this size multiplied by the
+  # HeavyStageGate permit count.
+  @histogram [
+    name: :internal_transactions_decompressed_body_bytes,
+    buckets: [1_000_000, 10_000_000, 100_000_000, 1_000_000_000, 10_000_000_000],
+    help: "Decompressed body size returned by debug_traceBlockByNumber (bytes), one observation per HTTP round-trip"
+  ]
+
   @doc """
   Increments the JSON-RPC requests counter for a given method.
 
@@ -32,5 +43,14 @@ defmodule EthereumJSONRPC.Prometheus.Instrumenter do
   @spec json_rpc_errors(String.t(), non_neg_integer()) :: :ok
   def json_rpc_errors(method, error_count \\ 1) do
     Counter.inc([name: :json_rpc_requests_errors_count, labels: [method]], error_count)
+  end
+
+  @doc """
+  Records the size in bytes of a decompressed debug_traceBlockByNumber response body.
+  Observed once per HTTP round-trip in the decode phase, after gunzip.
+  """
+  @spec observe_internal_transactions_decompressed_body_bytes(non_neg_integer()) :: :ok
+  def observe_internal_transactions_decompressed_body_bytes(bytes) do
+    Histogram.observe([name: :internal_transactions_decompressed_body_bytes], bytes)
   end
 end

@@ -100,6 +100,15 @@ defmodule EthereumJSONRPC.Transport do
 
   @callback json_rpc(batch_request, options) :: {:ok, batch_response} | {:error, reason :: term()}
 
+  # Raw counterpart of `json_rpc/2` — returns the undecoded, possibly-gzipped
+  # HTTP body so the caller can defer `gunzip` + `Jason.decode` under a
+  # memory-bound gate. HTTP-only; WS transports don't need to implement it.
+  # Declared (instead of being purely an internal HTTP detail) so the Mox mock
+  # generated for this behaviour exposes `json_rpc_raw/2` for tests.
+  @callback json_rpc_raw(batch_request, options) ::
+              {:ok, [%{body: binary(), headers: list(), status_code: pos_integer()}]}
+              | {:error, reason :: term()}
+
   @doc """
   Subscribes to event in `request`.
 
@@ -121,6 +130,7 @@ defmodule EthereumJSONRPC.Transport do
   """
   @callback unsubscribe(Subscription.t()) :: :ok | {:error, reason :: term()}
 
-  # HTTP does not support subscriptions
-  @optional_callbacks subscribe: 3, unsubscribe: 1
+  # HTTP does not support subscriptions; non-HTTP transports (WS) do not
+  # support raw fetch.
+  @optional_callbacks subscribe: 3, unsubscribe: 1, json_rpc_raw: 2
 end
