@@ -66,25 +66,6 @@ defmodule Indexer.Prometheus.Instrumenter do
     help: "Most recent block-batch fetch request duration (µs)"
   ]
 
-  # Legacy single-phase JSON-RPC fetch (non-Geth variants or :transaction_params).
-  # data_type lets you see whether block-level vs per-transaction tracing has
-  # different latency profiles on this node.
-  @counter [
-    name: :internal_transactions_fetch_duration_microseconds_sum,
-    labels: [:data_type],
-    help: "Cumulative internal-tx single-phase JSON-RPC fetch time (µs)"
-  ]
-  @counter [
-    name: :internal_transactions_fetch_duration_microseconds_count,
-    labels: [:data_type],
-    help: "Number of single-phase internal-tx fetch observations (success or failure)"
-  ]
-  @gauge [
-    name: :internal_transactions_fetch_duration_microseconds_last,
-    labels: [:data_type],
-    help: "Most recent single-phase internal-tx fetch duration (µs)"
-  ]
-
   # Chain.import time per internal-tx batch.
   @counter [
     name: :internal_transactions_import_duration_microseconds_sum,
@@ -339,15 +320,6 @@ defmodule Indexer.Prometheus.Instrumenter do
     Counter.inc([name: :block_batch_fetch_request_duration_microseconds_sum, labels: labels], time)
     Counter.inc(name: :block_batch_fetch_request_duration_microseconds_count, labels: labels)
     Gauge.set([name: :block_batch_fetch_request_duration_microseconds_last, labels: labels], time)
-  end
-
-  @doc "Records the single-phase internal-tx JSON-RPC fetch time (µs)."
-  @spec set_internal_transactions_fetch(time :: integer(), data_type :: atom()) :: :ok
-  def set_internal_transactions_fetch(time, data_type) do
-    labels = [data_type]
-    Counter.inc([name: :internal_transactions_fetch_duration_microseconds_sum, labels: labels], time)
-    Counter.inc(name: :internal_transactions_fetch_duration_microseconds_count, labels: labels)
-    Gauge.set([name: :internal_transactions_fetch_duration_microseconds_last, labels: labels], time)
   end
 
   @doc "Records the internal-tx Chain.import time (µs) for the given data_type."

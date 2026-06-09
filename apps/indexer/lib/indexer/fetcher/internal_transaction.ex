@@ -175,11 +175,9 @@ defmodule Indexer.Fetcher.InternalTransaction do
   # Untouched by the gate — those variants' trace_block / trace_replay
   # responses don't have the multi-GB problem.
   defp run_legacy(filtered_data, json_rpc_named_arguments, data_type) do
-    {fetch_time, fetch_result} =
-      :timer.tc(fn -> fetch_internal_transactions(filtered_data, json_rpc_named_arguments, data_type) end)
-
-    Prometheus.Instrumenter.set_internal_transactions_fetch(fetch_time, data_type)
-    handle_fetch_result(fetch_result, filtered_data, data_type)
+    filtered_data
+    |> fetch_internal_transactions(json_rpc_named_arguments, data_type)
+    |> handle_fetch_result(filtered_data, data_type)
   end
 
   defp handle_fetch_result({:ok, internal_transactions_params}, filtered_data, data_type),

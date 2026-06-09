@@ -92,7 +92,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "decimals": 0
         },
         "overrides": []
@@ -228,7 +227,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -284,7 +282,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -339,9 +336,7 @@
         "graphMode": "area"
       },
       "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
+        "defaults": {},
         "overrides": []
       },
       "targets": [
@@ -643,8 +638,8 @@
     {
       "id": 21,
       "type": "timeseries",
-      "title": "Block full processing latency (avg / last-max)",
-      "description": "avg = rate(_sum)/rate(_count), the exact arithmetic mean. last-max = max_over_time(_last[…]), the maximum value seen in the _last gauge across scrape samples in the window. Caveat: Prometheus only scrapes the gauge periodically (~15s), so very brief outliers between scrapes may be missed; the average is exact regardless.",
+      "title": "Block range end-to-end latency (per range: fetch + parse + import)",
+      "description": "block_full_processing_duration_microseconds — wall-clock from JSON-RPC fetch start to Chain.import end for ONE block range (a batch of blocks). INCLUDED: block JSON-RPC fetch, receipt fetch, parsing, address extraction, Chain.import for all blocks/txs/logs/tokens in the range. NOT divided per-block, so this value scales with range size — for per-block DB write time see the Chain.import latency panel to the right. avg = rate(_sum)/rate(_count). last-max = max_over_time(_last[…]) sampled at scrape time; brief outliers between scrapes may be missed.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -692,8 +687,8 @@
     {
       "id": 22,
       "type": "timeseries",
-      "title": "Block import (DB write) latency (avg / last-max)",
-      "description": "Wall-clock duration of Chain.import — INCLUDES DB-pool checkout, BEGIN, all upserts (and any row-lock waits from concurrent writers), and COMMIT. No advisory locks in this path, so the metric already captures lock-wait time. Avg is the throughput-relevant figure; last-max shows the slowest observation captured at scrape time.",
+      "title": "Block Chain.import latency (per-block average)",
+      "description": "block_import_duration_microseconds — Chain.import wall-clock for blocks/txs/logs/balances DIVIDED BY no_blocks_to_import (per-block average). A batch of 50 blocks finishing in 50ms shows as 1ms/block — sub-millisecond values are real and expected for fast batches. To get the per-call DB time, multiply by the batch size from `blocks_imported_count` rate vs `block_full_processing_count` rate. Includes DB-pool checkout, BEGIN, all upserts (and any row-lock waits), and COMMIT.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -741,8 +736,8 @@
     {
       "id": 23,
       "type": "timeseries",
-      "title": "Batch fetch (JSON-RPC) latency (avg / last-max)",
-      "description": "JSON-RPC batch fetch round-trip from the block fetcher.",
+      "title": "Block JSON-RPC fetch latency (HTTP only)",
+      "description": "block_batch_fetch_request_duration_microseconds — HTTP round-trip + JSON decode by EthereumJSONRPC for `eth_getBlockByNumber` batches. Excludes receipt fetch, parsing, transformation, and Chain.import. Per-range, not per-block.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -788,67 +783,18 @@
       ]
     },
     {
-      "id": 24,
-      "type": "timeseries",
-      "title": "Legacy single-phase fetch latency (avg / last-max)",
-      "description": "internal_transactions_fetch_duration_microseconds — single-phase JSON-RPC round-trip for trace_block / debug_trace per BufferedTask batch. Only populated for non-Geth variants (Nethermind/Erigon/Besu/RSK/Filecoin) or :transaction_params mode. EMPTY when Geth two-phase debug_traceBlockByNumber is active — see the Phase 1 raw HTTP / Phase 2 decode panels below instead.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prom}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 32
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "µs",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 5
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "mean",
-            "max"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (data_type) (rate(internal_transactions_fetch_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum by (data_type) (rate(internal_transactions_fetch_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "A",
-          "legendFormat": "avg {{data_type}}"
-        },
-        {
-          "expr": "max by (data_type) (max_over_time(internal_transactions_fetch_duration_microseconds_last{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
-          "refId": "B",
-          "legendFormat": "last-max {{data_type}}"
-        }
-      ]
-    },
-    {
       "id": 25,
       "type": "timeseries",
-      "title": "Internal-tx import (Chain.import) latency (avg / last-sample max)",
-      "description": "internal_transactions_import_duration_* — Chain.import call duration for an internal-tx batch (success or failure). Avg is computed from rate(_sum)/rate(_count). \"last\" is a gauge of the most recent observation; max_over_time samples it across scrapes, so single outliers between scrapes may be missed (use the gate_hold panel for tail-resistant visibility). Climbing avg = Postgres or sub-multi fan-out is the bottleneck.",
+      "title": "Chain.import latency — internal-tx batch (avg / last-max)",
+      "description": "internal_transactions_import_duration_microseconds_* — wall-clock duration of one Chain.import call per internal-tx batch (success or failure). Avg = rate(_sum)/rate(_count). last-max = max_over_time(_last[…]) sampled at scrape time; brief outliers between scrapes may be missed. Use the gate_hold panel below for tail-resistant visibility on the same critical section. Climbing avg = Postgres or the parallel sub-multi fan-out inside Chain.import is the bottleneck.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 24,
+        "x": 0,
         "y": 32
       },
       "fieldConfig": {
@@ -913,7 +859,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
@@ -1059,7 +1004,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
@@ -1221,7 +1165,7 @@
     {
       "id": 50,
       "type": "row",
-      "title": "Two-phase pipeline (Geth debug_traceBlockByNumber)",
+      "title": "Internal-tx pipeline (raw fetch → gate{decode + Chain.import})",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1282,8 +1226,8 @@
     {
       "id": 52,
       "type": "timeseries",
-      "title": "Phase 2 — decode + transform latency (avg / last-max)",
-      "description": "internal_transactions_decode_duration_microseconds — gunzip + Jason.decode + trace flattening + transform, run under HeavyStageGate. Bounded by permit count; if this saturates and `Heavy-stage gate wait` climbs, raise INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS — at the cost of higher peak memory.",
+      "title": "Decode + transform latency — gate sub-step (avg / last-max)",
+      "description": "internal_transactions_decode_duration_microseconds — gunzip + Jason.decode + trace flattening + transform. Runs INSIDE the HeavyStageGate permit but this metric measures ONLY the decode sub-step. The same permit is also held during the subsequent Chain.import for internal-tx — see the \"Gate hold vs decode vs Chain.import\" panel below for the full picture. Knob: INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS bounds concurrency.",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -1394,7 +1338,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
@@ -1424,12 +1367,39 @@
     {
       "id": 57,
       "type": "timeseries",
-      "title": "Gate hold vs decode latency — what the permit really protects",
-      "description": "The HeavyStageGate's permit is held from acquisition through decode + Chain.import + bookkeeping. \"gate_hold\" measures the full hold duration; \"decode\" measures only the gunzip+Jason.decode+transform step. The gap between them is the time the gate is serializing work other than decode — typically Chain.import and its parallel sub-multis. A persistent large gap means the gate is doing more than its memory-containment job. Avg uses rate(_sum)/rate(_count). \"last-max\" is max_over_time of the latest-value gauge — Prometheus samples at scrape time so very brief outliers can be missed.",
-      "datasource": { "type": "prometheus", "uid": "${prom}" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 83 },
-      "fieldConfig": { "defaults": { "unit": "µs", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "title": "Gate hold vs decode vs Chain.import — what the permit really protects",
+      "description": "The HeavyStageGate permit is held from acquisition through decode + Chain.import + small bookkeeping. This panel plots all three avgs: decode (lowest), Chain.import (middle), gate_hold (top). decode + Chain.import should roughly equal gate_hold — any visible gap above their sum is the unmeasured pre/post-import work that the gate is also serializing. The gate's stated purpose is memory containment for decoded trace responses, so holding it through Chain.import is the main source of gate-serialization beyond its design intent. \"last-max\" on gate_hold is max_over_time of the latest-value gauge sampled at scrape time; brief outliers between scrapes may be missed. Avg = rate(_sum)/rate(_count).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prom}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 83
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      },
       "targets": [
         {
           "expr": "sum(rate(internal_transactions_gate_hold_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_gate_hold_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -1445,6 +1415,11 @@
           "expr": "sum(rate(internal_transactions_decode_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_decode_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
           "refId": "C",
           "legendFormat": "decode avg"
+        },
+        {
+          "expr": "sum(rate(internal_transactions_import_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / sum(rate(internal_transactions_import_duration_microseconds_count{job=\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+          "refId": "D",
+          "legendFormat": "Chain.import avg"
         }
       ]
     },
@@ -1586,7 +1561,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "decimals": 0
         },
         "overrides": []
@@ -1627,7 +1601,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "decimals": 0
         },
         "overrides": []
@@ -1668,7 +1641,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "decimals": 0
         },
         "overrides": []
@@ -1709,7 +1681,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "decimals": 0
         },
         "overrides": []
@@ -1739,7 +1710,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
@@ -1783,7 +1753,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
@@ -1837,7 +1806,7 @@
       "id": 61,
       "type": "timeseries",
       "title": "Stage time spent per second (worker-equivalents)",
-      "description": "sum(rate(<metric>_sum)) / 1e6 for each duration histogram — total wall-clock work performed in each stage per wall-clock second, measured in worker-equivalents. A value of N means the stage is doing N seconds of work per second, i.e. it requires N workers running fully busy. Compare against each stage's configured concurrency (block fetcher pool size, INDEXER_INTERNAL_TRANSACTIONS_CONCURRENCY, INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS, DB pool size) — the stage whose load is closest to its limit is the throughput bottleneck. This is the most reliable saturation signal in the dashboard.",
+      "description": "Each series shows concurrent work-units per wall-second. A value of N means the stage is doing N workers' worth of work. Compare to each stage's concurrency limit (block fetcher pool, INDEXER_INTERNAL_TRANSACTIONS_CONCURRENCY, INDEXER_INTERNAL_TRANSACTIONS_HEAVY_PERMITS, DB pool) to spot the bottleneck.\n\nMixed sources: most series use sum(rate(<metric>_sum))/1e6 — completion-based, accurate for fast stages (block_import, block_batch_fetch, itx_raw_fetch, itx_decode). The itx_import line uses the real-time internal_transactions_heavy_gate_in_use gauge instead, because Chain.import for internal-tx can run for minutes and sum-based saturation lags reality by 100×+ for that stage. The gauge reflects how many permits are currently held (≈ in-flight Chain.import calls, since Chain.import dominates gate hold time).",
       "datasource": {
         "type": "prometheus",
         "uid": "${prom}"
@@ -1850,7 +1819,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "decimals": 2,
           "custom": {
             "drawStyle": "line",
@@ -1882,24 +1850,19 @@
           "legendFormat": "block_batch_fetch"
         },
         {
-          "expr": "sum(rate(internal_transactions_fetch_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
-          "refId": "C",
-          "legendFormat": "itx_fetch (legacy)"
-        },
-        {
           "expr": "sum(rate(internal_transactions_raw_fetch_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
-          "refId": "D",
+          "refId": "C",
           "legendFormat": "itx_raw_fetch"
         },
         {
           "expr": "sum(rate(internal_transactions_decode_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
-          "refId": "E",
+          "refId": "D",
           "legendFormat": "itx_decode"
         },
         {
-          "expr": "sum(rate(internal_transactions_import_duration_microseconds_sum{job=\"$job\", instance=~\"$instance\"}[$__rate_interval])) / 1e6",
-          "refId": "F",
-          "legendFormat": "itx_import"
+          "expr": "max(internal_transactions_heavy_gate_in_use{job=\"$job\", instance=~\"$instance\"})",
+          "refId": "E",
+          "legendFormat": "itx_import (gate-in-use, in-flight)"
         }
       ]
     }
