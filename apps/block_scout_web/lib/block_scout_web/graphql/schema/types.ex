@@ -2,7 +2,7 @@ defmodule BlockScoutWeb.GraphQL.Schema.Transaction do
   @moduledoc false
   use Utils.CompileTimeEnvHelper, chain_identity: [:explorer, :chain_identity]
 
-  alias BlockScoutWeb.GraphQL.Resolvers.{Block, InternalTransaction}
+  alias BlockScoutWeb.GraphQL.Resolvers.Block
 
   case @chain_identity do
     {:optimism, :celo} ->
@@ -47,13 +47,6 @@ defmodule BlockScoutWeb.GraphQL.Schema.Transaction do
 
         field :block, :block do
           resolve(&Block.get_by/3)
-        end
-
-        connection field(:internal_transactions, node_type: :internal_transaction) do
-          arg(:count, :integer)
-          resolve(&InternalTransaction.get_by/3)
-
-          complexity(fn params, child_complexity -> process_complexity(params, child_complexity) end)
         end
 
         unquote_splicing(@chain_type_fields)

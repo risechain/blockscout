@@ -34,7 +34,6 @@ defmodule BlockScoutWeb.CsvExportController do
 
   defp supported_types do
     [
-      "internal-transactions",
       "transactions",
       "token-transfers",
       "logs"

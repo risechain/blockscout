@@ -9,7 +9,7 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
   alias BlockScoutWeb.API.V2.{ApiView, Helper, InternalTransactionView, TokenTransferView, TokenView}
 
   alias BlockScoutWeb.Models.GetTransactionTags
-  alias BlockScoutWeb.{TransactionStateView, TransactionView}
+  alias BlockScoutWeb.TransactionView
   alias Ecto.Association.NotLoaded
   alias Explorer.{Chain, Market}
 
@@ -874,9 +874,12 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     |> append_balance_change(state_change, coin_or_transfer)
   end
 
+  defp not_negative?(%Wei{value: val}), do: not Decimal.negative?(val)
+  defp not_negative?(val), do: not Decimal.negative?(val)
+
   defp append_balances(map, balance_before, balance_after) do
     balances =
-      if TransactionStateView.not_negative?(balance_before) and TransactionStateView.not_negative?(balance_after) do
+      if not_negative?(balance_before) and not_negative?(balance_after) do
         %{
           "balance_before" => balance_before,
           "balance_after" => balance_after

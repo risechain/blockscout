@@ -86,13 +86,6 @@ defmodule BlockScoutWeb.Routers.WebRouter do
 
     resources "/tx", TransactionController, only: [:show] do
       resources(
-        "/internal-transactions",
-        TransactionInternalTransactionController,
-        only: [:index],
-        as: :internal_transaction
-      )
-
-      resources(
         "/raw-trace",
         TransactionRawTraceController,
         only: [:index],
@@ -105,11 +98,6 @@ defmodule BlockScoutWeb.Routers.WebRouter do
         only: [:index],
         as: :token_transfer
       )
-
-      resources("/state", TransactionStateController,
-        only: [:index],
-        as: :state
-      )
     end
 
     resources("/accounts", AddressController, only: [:index])
@@ -118,13 +106,6 @@ defmodule BlockScoutWeb.Routers.WebRouter do
 
     resources "/address", AddressController, only: [:show] do
       resources("/transactions", AddressTransactionController, only: [:index], as: :transaction)
-
-      resources(
-        "/internal-transactions",
-        AddressInternalTransactionController,
-        only: [:index],
-        as: :internal_transaction
-      )
 
       resources(
         "/validations",

@@ -340,7 +340,14 @@ defmodule Indexer.Fetcher.InternalTransaction do
   end
 
   defp import_internal_transaction(internal_transactions_params, transactions_params_or_unique_numbers, data_type) do
-    internal_transactions_params_marked = mark_failed_transactions(internal_transactions_params)
+    # Persist only CREATE/CREATE2 frames — they're the sole consumers of this
+    # table (factory-deployed contract verification via
+    # Address.creation_internal_transaction_query/1). Dropping CALL /
+    # SELFDESTRUCT frames here shrinks Chain.import payloads by ~50-100×.
+    internal_transactions_params_marked =
+      internal_transactions_params
+      |> mark_failed_transactions()
+      |> Enum.filter(fn p -> p[:type] in ["create", "create2"] end)
 
     addresses_params =
       Addresses.extract_addresses(%{

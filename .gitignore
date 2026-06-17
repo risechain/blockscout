@@ -77,3 +77,8 @@ tasks_in_progress
 /temp
 
 openapi.yaml
+
+.nix-mix
+.nix-hex
+flake.nix
+flake.lock

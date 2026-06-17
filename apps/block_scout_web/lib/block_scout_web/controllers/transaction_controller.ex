@@ -8,7 +8,7 @@ defmodule BlockScoutWeb.TransactionController do
   alias BlockScoutWeb.{
     AccessHelper,
     Controller,
-    TransactionInternalTransactionController,
+    TransactionLogController,
     TransactionTokenTransferController,
     TransactionView
   }
@@ -37,6 +37,12 @@ defmodule BlockScoutWeb.TransactionController do
     )
   end
 
+  # AJAX-loaded default tab content for the legacy HTML tx page. Originally
+  # delegated to TransactionInternalTransactionController as the "most
+  # informative summary for non-token-transfer txs" (call tree, value flow,
+  # contract creations). With the internal-transactions tab removed, Logs is
+  # the closest intent-preserving substitute — still semantic (decoded events)
+  # and second in the new tab order, vs Raw Trace which is opcode-level.
   def show(conn, %{"id" => transaction_hash_string, "type" => "JSON"}) do
     case Chain.string_to_full_hash(transaction_hash_string) do
       {:ok, transaction_hash} ->
@@ -46,7 +52,7 @@ defmodule BlockScoutWeb.TransactionController do
             "type" => "JSON"
           })
         else
-          TransactionInternalTransactionController.index(conn, %{
+          TransactionLogController.index(conn, %{
             "transaction_id" => transaction_hash_string,
             "type" => "JSON"
           })
@@ -96,7 +102,7 @@ defmodule BlockScoutWeb.TransactionController do
              {:ok, false} <- AccessHelper.restricted_access?(to_string(transaction.to_address_hash), params) do
           render(
             conn,
-            "show_internal_transactions.html",
+            "show_token_transfers.html",
             exchange_rate: Market.get_coin_exchange_rate(),
             current_path: Controller.current_full_path(conn),
             current_user: current_user(conn),

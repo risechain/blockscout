@@ -184,10 +184,8 @@ defmodule BlockScoutWeb.Routers.ApiRouter do
 
       get("/:transaction_hash_param", V2.TransactionController, :transaction)
       get("/:transaction_hash_param/token-transfers", V2.TransactionController, :token_transfers)
-      get("/:transaction_hash_param/internal-transactions", V2.TransactionController, :internal_transactions)
       get("/:transaction_hash_param/logs", V2.TransactionController, :logs)
       get("/:transaction_hash_param/raw-trace", V2.TransactionController, :raw_trace)
-      get("/:transaction_hash_param/state-changes", V2.TransactionController, :state_changes)
       get("/:transaction_hash_param/summary", V2.TransactionController, :summary)
 
       chain_scope :neon do
@@ -207,15 +205,10 @@ defmodule BlockScoutWeb.Routers.ApiRouter do
       get("/", V2.TokenTransferController, :token_transfers)
     end
 
-    scope "/internal-transactions" do
-      get("/", V2.InternalTransactionController, :internal_transactions)
-    end
-
     scope "/blocks" do
       get("/", V2.BlockController, :blocks)
       get("/:block_hash_or_number_param", V2.BlockController, :block)
       get("/:block_hash_or_number_param/transactions", V2.BlockController, :transactions)
-      get("/:block_hash_or_number_param/internal-transactions", V2.BlockController, :internal_transactions)
       get("/:block_hash_or_number_param/withdrawals", V2.BlockController, :withdrawals)
       get("/:block_number_param/countdown", V2.BlockController, :block_countdown)
 
@@ -247,8 +240,6 @@ defmodule BlockScoutWeb.Routers.ApiRouter do
       get("/:address_hash_param/transactions/csv", V2.CsvExportController, :transactions_csv)
       get("/:address_hash_param/token-transfers", V2.AddressController, :token_transfers)
       get("/:address_hash_param/token-transfers/csv", V2.CsvExportController, :token_transfers_csv)
-      get("/:address_hash_param/internal-transactions", V2.AddressController, :internal_transactions)
-      get("/:address_hash_param/internal-transactions/csv", V2.CsvExportController, :internal_transactions_csv)
       get("/:address_hash_param/logs", V2.AddressController, :logs)
       get("/:address_hash_param/logs/csv", V2.CsvExportController, :logs_csv)
       get("/:address_hash_param/blocks-validated", V2.AddressController, :blocks_validated)
