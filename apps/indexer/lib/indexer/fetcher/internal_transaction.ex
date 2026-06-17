@@ -344,6 +344,8 @@ defmodule Indexer.Fetcher.InternalTransaction do
     # table (factory-deployed contract verification via
     # Address.creation_internal_transaction_query/1). Dropping CALL /
     # SELFDESTRUCT frames here shrinks Chain.import payloads by ~50-100×.
+    Prometheus.Instrumenter.inc_internal_transactions_decoded(length(internal_transactions_params))
+
     internal_transactions_params_marked =
       internal_transactions_params
       |> mark_failed_transactions()

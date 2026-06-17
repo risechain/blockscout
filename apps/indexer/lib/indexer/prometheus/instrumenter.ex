@@ -217,7 +217,16 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   @counter [
     name: :internal_transactions_imported_count,
-    help: "Number of internal transactions imported (use rate() for itx/sec)"
+    help: "Number of internal transactions imported (use rate() for itx/sec). Post-filter — CREATE/CREATE2 only."
+  ]
+
+  # Pre-filter count of internal-tx params returned by the tracer per import
+  # batch. Compared against internal_transactions_imported_count it gives the
+  # filter selectivity (decoded vs persisted) and bounds decoder/RPC load
+  # independently of the shrunk import payload.
+  @counter [
+    name: :internal_transactions_decoded_count,
+    help: "Number of internal transactions decoded from traces (pre-filter, all types)"
   ]
 
   @counter [
@@ -452,6 +461,18 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   def inc_internal_transactions_imported(count) do
     Counter.inc([name: :internal_transactions_imported_count], count)
+  end
+
+  @doc """
+  Increments the counter of decoded internal transactions by `count`. Tracks
+  pre-filter trace volume — compare against `internal_transactions_imported_count`
+  for filter selectivity.
+  """
+  @spec inc_internal_transactions_decoded(count :: non_neg_integer()) :: :ok
+  def inc_internal_transactions_decoded(0), do: :ok
+
+  def inc_internal_transactions_decoded(count) do
+    Counter.inc([name: :internal_transactions_decoded_count], count)
   end
 
   @doc """
