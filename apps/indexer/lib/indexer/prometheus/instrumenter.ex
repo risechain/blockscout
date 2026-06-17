@@ -217,7 +217,7 @@ defmodule Indexer.Prometheus.Instrumenter do
 
   @counter [
     name: :internal_transactions_imported_count,
-    help: "Number of internal transactions imported (use rate() for itx/sec). Post-filter — CREATE/CREATE2 only."
+    help: "Number of internal transactions imported (use rate() for itx/sec). Post-filter - CREATE/CREATE2 only."
   ]
 
   # Pre-filter count of internal-tx params returned by the tracer per import
